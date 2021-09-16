@@ -1,0 +1,93 @@
+# paths
+out_root: path_to_your_output_root  # <- need change
+out: output_directory  # <- need change
+
+dataset:
+  data_root:
+  name: hand2
+  bs: 6  # batchsize
+  image_size: 128
+  train:
+    random_background: True
+    data_root: path_to_your_dataset_root  # <- need change
+    background_path:
+    train: True
+    n_mesh: 3545
+    n_rendered_per_mesh: 10
+    n_imgs_per_mesh: 10
+
+
+generator_params:
+  no_nerf_bn: True
+  z_dim: 256
+  patch_size: 24
+  z_bg_dim: 0
+  use_nerf: True
+  nerf_params:
+    hidden_size: 32  # hidden size of NeRF
+    out_dim: 256  # output channel of NeRF
+    Nc: 48  # number of points for coarse sampling
+    Nf: 48  # number of points for fine sampling
+    no_world_pose: False
+    no_ray_direction: False
+    use_direction_coef: False
+    render_version: 1
+    arf_temperature: 0.1
+    sum_density: False
+    concat_pose: False
+    siren: False
+    concat: False
+    smooth: False
+    density_activation: MyReLU
+    density_scale: 1
+    detach_alpha: False
+    se3: False
+    max_chunk_size: 16384
+    # concat model
+    mask_input: False
+    mask_bone_length: True
+    mask_before_PE: False
+    selector_activation: softmax
+    hard_mask: False
+    use_scale_factor: True
+    weighted_average: False
+    selector_adaptive_tmp:
+      start: 1
+      gamma: 1
+      min: 1
+    # siren model
+    film_w: 1
+    groupconv_first: False
+
+discriminator_params:
+  minibatch_std: True
+
+loss:
+  adv_loss_type: ce
+  bone_guided_coef: 10
+  nerf_coef: 1
+  color_coef: 1
+  mask_coef: 1
+  push_to_background_coef: 5
+  nerf_loss_type: mse
+  ignore_boundary: False
+  suppress_small: False
+  r1_loss_coef: 0.01
+
+consistency_regularization: False
+replace: True
+mix_nerf_and_cnn: False
+start_replace: 20000
+start_gen_training: 0
+consistency_regularization_coef: 0.0
+nerf_only: False
+num_iter: 1000000
+generate_background: False
+
+# snapshots
+resume: # path to snapshot
+
+# For DDP
+master_addr: 'localhost'
+master_port: '12357'
+backend: 'nccl'
