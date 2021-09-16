@@ -3,9 +3,9 @@ import torch
 from torch import nn
 
 from NARF.models.net import get_nerf_module
-from NARF.models.stylegan import Generator as StyleGANGenerator
-from NARF.models.stylegan import StyledConv, ModulatedConv2d
 from NARF.models.tiny_utils import whole_image_grid_ray_sampler
+from models.stylegan import Generator as StyleGANGenerator
+from models.stylegan import StyledConv, ModulatedConv2d
 
 
 class NeuralRenderer(nn.Module):
