@@ -9,11 +9,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from NARF.dataset import THUmanDataset, THUmanPoseDataset
-from NARF.models.stylegan import Discriminator
 from NARF.utils import record_setting, yaml_config, write
 from NARF.visualization_utils import save_img
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
 from models.net import NeRFNRGenerator
+from models.stylegan import Discriminator
 
 
 def train(train_func, config):
