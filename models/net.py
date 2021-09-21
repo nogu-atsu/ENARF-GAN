@@ -3,7 +3,7 @@ import torch
 import torchvision
 from torch import nn
 
-from NARF.models.net import get_nerf_module
+from NARF.models.net import NeRF
 from NARF.models.tiny_utils import whole_image_grid_ray_sampler
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d
@@ -46,7 +46,7 @@ class NeuralRenderer(nn.Module):
 
 
 class NeRFNRGenerator(nn.Module):
-    def __init__(self, config, size, intrinsics=None, num_bone=1, parent_id=None):
+    def __init__(self, config, size, intrinsics=None, num_bone=1, parent_id=None, num_bone_param=None):
         super(NeRFNRGenerator, self).__init__()
         self.config = config
         self.size = size
@@ -61,9 +61,8 @@ class NeRFNRGenerator(nn.Module):
         hidden_size = config.nerf_params.hidden_size
         nerf_out_dim = config.nerf_params.out_dim
 
-        nerf = get_nerf_module(config)
-        self.nerf = nerf(config.nerf_params, z_dim=z_dim, groups=num_bone, bone_length=True,
-                         parent=parent_id)
+        self.nerf = NeRF(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
+                         parent=parent_id, num_bone_param=num_bone_param)
         self.background_generator = StyleGANGenerator(size=size // 4, style_dim=z_dim,
                                                       n_mlp=4, last_channel=nerf_out_dim)
 
