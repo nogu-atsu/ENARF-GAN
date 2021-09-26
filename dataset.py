@@ -10,7 +10,6 @@ from scipy.spatial.transform import Slerp
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from NARF.models.tiny_utils import get_final_papernt_id
 from NARF.models.utils_3d import THUmanPrior, CameraProjection, create_mask
 
 
@@ -40,8 +39,7 @@ class THUmanDataset(Dataset):
         self.just_cache = just_cache
 
         self.imgs = self.cache_image()
-        if self.return_bone_params:
-            self.pose_to_world_, self.pose_to_camera_, self.inv_intrinsics_ = self.cache_bone_params()
+        self.pose_to_world_, self.pose_to_camera_, self.inv_intrinsics_ = self.cache_bone_params()
         if just_cache:
             return
 
@@ -57,18 +55,16 @@ class THUmanDataset(Dataset):
         self.parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9,
                                  12, 13, 14, 16, 17, 18, 19, 20, 21])
 
-        if self.return_bone_params:
-            self.pose_to_world = self.pose_to_world_[data_idx]
-            self.pose_to_camera = self.pose_to_camera_[data_idx]
-            if self.inv_intrinsics_ is not None:
-                self.inv_intrinsics = self.inv_intrinsics_[data_idx]
+        self.pose_to_camera = self.pose_to_camera_[data_idx]
+        if self.inv_intrinsics_ is not None:
+            self.inv_intrinsics = self.inv_intrinsics_[data_idx]
 
-            self.cp = CameraProjection(size=size)
-            self.hpp = THUmanPrior()
-            self.num_bone = self.hpp.num_bone
-            self.num_bone_param = self.num_bone - 1
-            self.num_valid_keypoints = self.hpp.num_valid_keypoints
-            self.intrinsics = self.cp.intrinsics
+        self.cp = CameraProjection(size=size)
+        self.hpp = THUmanPrior()
+        self.num_bone = 24
+        self.num_bone_param = self.num_bone - 1
+        self.num_valid_keypoints = self.hpp.num_valid_keypoints
+        self.intrinsics = self.cp.intrinsics
 
     def cache_image(self):
         if os.path.exists(f"{self.data_root}/render_{self.size}.npy"):
@@ -171,35 +167,13 @@ class THUmanDataset(Dataset):
         img = img[::-1].copy()  # BGR2RGB
         mask = mask.astype("float32")  # 1 x 128 x 128
 
-        return_dict = {"img": img, "mask": mask, "idx": self.data_idx[i]}
+        pose_to_camera = self.pose_to_camera[i]
+        pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
+        pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
+        pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
+        pose_2d = pose_2d.astype("float32")
 
-        if self.return_bone_params:
-            pose_to_world = self.pose_to_world[i]
-            pose_to_camera = self.pose_to_camera[i]
-            bone_length = self.get_bone_length(pose_to_world)
-
-            if self.return_bone_mask:
-                # TODO this flag seems not used
-                # intrinsics = np.linalg.inv(self.inv_intrinsics[i]) if self.load_camera_intrinsics else None
-                # image_coord = self.cp.pose_to_image_coord(pose_to_camera, intrinsics=intrinsics)
-                # pose_to_camera_, image_coord = self.add_blank_part(pose_to_camera[None], image_coord)
-                # disparity, bone_mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, pose_to_camera_,
-                #                                                                        image_coord,
-                #                                                                        self.size)
-                disparity, bone_mask, part_bone_disparity, keypoint_mask = [np.array([0], dtype="float32") for _ in
-                                                                            range(4)]
-                return_dict["disparity"] = disparity
-                return_dict["bone_mask"] = bone_mask
-                return_dict["part_bone_disparity"] = part_bone_disparity
-                return_dict["keypoint_mask"] = keypoint_mask
-
-                if self.load_camera_intrinsics:
-                    inv_intrinsics = self.inv_intrinsics[i]  # 3 x 3
-                    return_dict["inv_intrinsics"] = inv_intrinsics
-
-            return_dict["pose_to_world"] = pose_to_world.astype("float32")
-            return_dict["pose_to_camera"] = pose_to_camera.astype("float32")
-            return_dict["bone_length"] = bone_length.astype("float32")
+        return_dict = {"img": img, "idx": self.data_idx[i], "pose_2d": pose_2d}
         return return_dict
 
     def random_sample(self):
@@ -328,11 +302,6 @@ class THUmanPoseDataset(Dataset):
     def scale_pose(self, pose, scale):
         pose[:, :3, 3] *= scale
         return pose
-
-    @staticmethod
-    def remove_blank_part(joint_mat_world, joint_mat_camera):
-        idx = [i not in [10, 11, 15, 22, 23] for i in range(24)]
-        return joint_mat_world[idx], joint_mat_camera[idx]
 
     def __getitem__(self, i):
         i = i % len(self.poses)

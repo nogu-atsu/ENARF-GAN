@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torchvision
 from torch import nn
+import torch.nn.functional as F
 
 from NARF.models.net import NeRF
 from NARF.models.tiny_utils import whole_image_grid_ray_sampler
@@ -147,7 +148,7 @@ class Encoder(nn.Module):
     def scale_pose(self, pose):
         bone_length = torch.linalg.norm(pose[:, 1:] - pose[:, self.parents[1:]], dim=2)[:, :, 0]  # (B, n_parts-1)
         mean_bone_length = bone_length.mean(dim=1)
-        return pose / mean_bone_length * self.mean_bone_length
+        return pose / mean_bone_length[:, None, None, None] * self.mean_bone_length
 
     def forward(self, img: torch.tensor, pose_2d: torch.tensor):
         """estimate 3d pose from image and GT 2d pose
@@ -183,26 +184,48 @@ class Encoder(nn.Module):
         h = self.linear_out(h)  # (n_parts, B, 7)
 
         rot = h[..., :6]  # (n_parts, B, 6)
-        depth = h[..., 6]  # (n_parts, B)
+        depth = F.softplus(h[..., 6])  # (n_parts, B)
 
         rotation_matrix = rotation_6d_to_matrix(rot)  # (n_parts, B, 3, 3)
         rotation_matrix = rotation_matrix.permute(1, 0, 2, 3)
 
-        pose_homo = torch.cat([pose_2d, depth.transpose()[:, :, None]])
+        pose_homo = torch.cat([pose_2d, torch.ones_like(pose_2d[:, :, :1])], dim=2) * depth.permute(1, 0)[:, :, None]
         pose_translation = torch.matmul(inv_intrinsic, pose_homo[:, :, :, None])  # (B, n_parts, 3, 1)
         pose_translation = self.scale_pose(pose_translation)
 
         pose_Rt = torch.cat([rotation_matrix, pose_translation], dim=-1)  # (B, n_parts, 3, 4)
         num_parts = pose_Rt.shape[1]
         pose_Rt = torch.cat([pose_Rt,
-                             torch.tensor([0, 0, 0, 1])[None, None, None].expand(batchsize, num_parts, 1, 4)],
+                             torch.tensor([0, 0, 0, 1],
+                                          device=pose_Rt.device)[None, None, None].expand(batchsize, num_parts, 1, 4)],
                             dim=2)
 
         # bone length
-        coordinate = pose_Rt[:, :3, 3]
-        length = np.linalg.norm(coordinate[1:] - coordinate[self.parents[1:]], axis=1)
-        bone_length = length[:, None]
+        coordinate = pose_Rt[:, :, :3, 3]
+        length = torch.linalg.norm(coordinate[:, 1:] - coordinate[:, self.parents[1:]], axis=2)
+        bone_length = length[:, :, None]
+        return pose_Rt, z, bone_length, intrinsic
 
-        bone_mask = None  # TODO
 
-        return pose_Rt, z, bone_length, bone_mask
+class PoseDiscriminator(nn.Module):
+    def __init__(self, num_bone: int, n_mlp: int = 4, hidden_dim: int = 256):
+        super(PoseDiscriminator, self).__init__()
+        layers = [nn.Linear(2 * num_bone, hidden_dim), nn.ReLU(inplace=True)]
+        for i in range(n_mlp - 2):
+            layers += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True)]
+        layers += [nn.Linear(hidden_dim, 1)]
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, pose_2d: torch.tensor):
+        """pose discriminator
+
+        Args:
+            pose_2d: (b, n_parts, 2), normalized to [-1, 1]
+
+        Returns:
+
+        """
+        batchsize = pose_2d.shape[0]
+        pose_2d = pose_2d.reshape(batchsize, -1)
+        out = self.model(pose_2d)
+        return out
