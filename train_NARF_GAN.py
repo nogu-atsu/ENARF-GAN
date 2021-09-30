@@ -59,6 +59,7 @@ def create_dataloader(config_dataset):
 
 def prepare_models(gen_config, dis_config, pose_dataset, size):
     gen = NeRFNRGenerator(gen_config, size, pose_dataset.cp.intrinsics, num_bone=pose_dataset.num_bone)
+                          # num_bone_param=pose_dataset.num_bone_param) # TODO num_bone_params
     dis = Discriminator(dis_config, size=size)
     return gen, dis
 
