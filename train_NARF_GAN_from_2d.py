@@ -107,7 +107,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
     bone_loss_func = nerf_patch_loss
 
-    enc_optimizer = optim.Adam(gen.parameters(), lr=5e-4, betas=(0, 0.99))
+    enc_optimizer = optim.Adam(enc.parameters(), lr=5e-4, betas=(0, 0.99))
     gen_optimizer = optim.Adam(gen.parameters(), lr=1e-3, betas=(0, 0.99))
     dis_optimizer = optim.Adam(dis.parameters(), lr=2e-3, betas=(0, 0.99))
     pdis_optimizer = optim.Adam(pdis.parameters(), lr=5e-4, betas=(0, 0.99))
@@ -124,16 +124,20 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 enc_module = enc.module
                 gen_module = gen.module
                 dis_module = dis.module
+                pdis_module = pdis.module
             else:
                 enc_module = enc
                 gen_module = gen
                 dis_module = dis
+                pdis_module = pdis
             enc_module.load_state_dict(snapshot["enc"], strict=True)
             gen_module.load_state_dict(snapshot["gen"], strict=True)
             dis_module.load_state_dict(snapshot["dis"])
+            pdis_module.load_state_dict(snapshot["pdis"])
             enc_optimizer.load_state_dict(snapshot["enc_opt"])
             gen_optimizer.load_state_dict(snapshot["gen_opt"])
             dis_optimizer.load_state_dict(snapshot["dis_opt"])
+            pdis_optimizer.load_state_dict(snapshot["pdis_opt"])
             iter = snapshot["iteration"]
             start_time = snapshot["start_time"]
             del snapshot
@@ -145,6 +149,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             enc.train()
             gen.train()
             dis.train()
+            pdis.train()
 
             real_img = minibatch["img"].cuda(non_blocking=True).float()
             pose_2d = minibatch["pose_2d"].cuda(non_blocking=True).float()
