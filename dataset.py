@@ -16,20 +16,21 @@ from NARF.models.utils_3d import THUmanPrior, CameraProjection, create_mask
 class THUmanDataset(Dataset):
     """THUman dataset"""
 
-    def __init__(self, config, size=128, random_background=False, return_bone_params=False,
-                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False):
+    def __init__(self, config, size=128, return_bone_params=False,
+                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False,
+                 multiview: bool = False):
         random.seed()
         self.size = size
         self.num_repeat_in_epoch = num_repeat_in_epoch
 
-        # self.random_background = random_background
         self.return_bone_params = return_bone_params
         self.return_bone_mask = return_bone_mask
+
+        self.multiview = multiview
 
         # read params from config
         self.data_root = config.data_root
         self.config = config
-        self.random_background = config.random_background
         self.n_mesh = config.n_mesh
         self.n_rendered_per_mesh = config.n_rendered_per_mesh
         self.n_imgs_per_mesh = config.n_imgs_per_mesh
@@ -143,29 +144,30 @@ class THUmanDataset(Dataset):
         length = np.linalg.norm(coordinate[1:] - coordinate[self.parents[1:]], axis=1)
         return length[:, None]
 
+    def preprocess_img(self, img, bg=None):
+        # bgra -> rgb, a
+        mask = img[3:] / 255.
+        img = img[:3]
+
+        # blacken background
+        img = img * mask
+        if hasattr(self, "background_imgs"):
+            if bg is None:
+                bg_idx = random.randint(0, len(self.background_imgs) - 1)
+                bg = self.background_imgs[bg_idx]
+            img = img + bg[::-1] * (1 - mask)
+
+        img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
+        img = img[::-1].copy()  # BGR2RGB
+        # mask = mask.astype("float32")  # 1 x 128 x 128
+        return img, bg
+
     def __getitem__(self, i):
         i = i % len(self.imgs)
 
         img = self.imgs[i]
 
-        # bgra -> rgb, a
-        mask = img[3:] / 255.
-        img = img[:3]
-
-        if self.random_background:
-            backrgound = np.ones((3, self.size, self.size)) * np.random.randint(0, 256, size=(3, 1, 1))
-            img = img * mask + backrgound * (1 - mask)
-        else:
-            # blacken background
-            img = img * mask
-            if hasattr(self, "background_imgs"):
-                bg_idx = random.randint(0, len(self.background_imgs) - 1)
-                bg = self.background_imgs[bg_idx]
-                img = img + bg[::-1] * (1 - mask)
-
-        img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
-        img = img[::-1].copy()  # BGR2RGB
-        mask = mask.astype("float32")  # 1 x 128 x 128
+        img, background = self.preprocess_img(img)
 
         pose_to_camera = self.pose_to_camera[i]
         pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
@@ -173,7 +175,24 @@ class THUmanDataset(Dataset):
         pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
         pose_2d = pose_2d.astype("float32")
 
-        return_dict = {"img": img, "idx": self.data_idx[i], "pose_2d": pose_2d}
+        return_dict = {"img": img, "idx": self.data_idx[i], "pose_2d": pose_2d, "pose_3d": pose_to_camera}
+
+        if self.multiview:
+            mesh_id = i // self.n_imgs_per_mesh
+            i_other_view = random.randint(mesh_id * self.n_imgs_per_mesh,
+                                          (mesh_id - 1) * self.n_imgs_per_mesh - 1)
+            img_other_view = self.imgs[i_other_view]
+            img_other_view, _ = self.preprocess_img(img_other_view)
+
+            pose_3d_other_view = self.pose_to_camera[i_other_view]
+
+            relative_rotation = np.mutmal(pose_3d_other_view, np.linalg.inv(pose_to_camera))
+            assert np.square(relative_rotation[:, 0] - relative_rotation[:, 1]).sum() < 1e-6
+
+            return_dict["img_other_view"] = img_other_view
+            return_dict["relative_rotation"] = relative_rotation[:, 0]  # (B, 4, 4)
+            return_dict["pose_3d_other_view"] = pose_3d_other_view
+
         return return_dict
 
     def random_sample(self):
