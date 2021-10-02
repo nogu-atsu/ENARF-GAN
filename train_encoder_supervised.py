@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from NARF.utils import record_setting, yaml_config, write
 from dataset import THUmanDataset
@@ -27,13 +28,16 @@ def create_dataset(config_dataset, just_cache=False):
     dataset_name = config_dataset.name
 
     train_dataset_config = config_dataset.train
+    test_dataset_config = config_dataset.test
 
     print("loading datasets")
     if dataset_name == "human":
         img_dataset = THUmanDataset(train_dataset_config, size=size, just_cache=just_cache)
+        test_img_dataset = THUmanDataset(test_dataset_config, size=size, just_cache=just_cache,
+                                         num_repeat_in_epoch=1)
     else:
         assert False
-    return img_dataset
+    return img_dataset, test_img_dataset
 
 
 def create_dataloader(config_dataset):
@@ -43,16 +47,47 @@ def create_dataloader(config_dataset):
     num_workers = config_dataset.num_workers
     print("num_workers:", num_workers)
 
-    img_dataset = create_dataset(config_dataset)
+    img_dataset, test_img_dataset = create_dataset(config_dataset)
     loader_img = DataLoader(img_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle,
                             drop_last=drop_last)
+    test_loader_img = DataLoader(test_img_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False,
+                                 drop_last=False)
 
-    return (img_dataset,), (loader_img,)
+    return (img_dataset, test_img_dataset), (loader_img, test_loader_img)
 
 
 def prepare_models(img_dataset):
     enc = Encoder(img_dataset.parents, img_dataset.cp.intrinsics)
     return enc
+
+
+def evaluate(enc, test_loader):
+    print("validation")
+    mse = nn.MSELoss()
+    enc.eval()
+    loss_rotation = 0
+    loss_translation = 0
+    with torch.no_grad():
+        for minibatch in tqdm(test_loader):
+            real_img = minibatch["img"].cuda(non_blocking=True).float()
+            pose_2d = minibatch["pose_2d"].cuda(non_blocking=True).float()
+            pose_3d_gt = minibatch["pose_3d"].cuda(non_blocking=True).float()
+            bs = real_img.shape[0]
+
+            pose_3d, _, _, _ = enc(real_img, pose_2d)  # (B, n_parts, 4, 4), (B, z_dim*4), (B, n_parts)
+            scaled_pose_3d_gt = enc.scale_pose(pose_3d_gt[:, :, :3, 3:])
+            loss_rotation += mse(pose_3d[:, :, :3, :3], pose_3d_gt[:, :, :3, :3]) * bs
+            loss_translation += mse(pose_3d[:, :, :3, 3:], scaled_pose_3d_gt) * bs
+    loss_rotation = loss_rotation / len(test_loader.dataset)
+    loss_translation = loss_translation / len(test_loader.dataset)
+
+    loss_dict = {}
+    loss_dict["loss_rotation_val"] = loss_rotation
+    loss_dict["loss_translation_val"] = loss_translation
+
+    enc.train()
+
+    return loss_dict
 
 
 def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
@@ -68,8 +103,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
     num_iter = config.num_iter
 
-    img_dataset, = datasets
-    loader_img, = data_loaders
+    img_dataset, test_img_dataset = datasets
+    loader_img, test_loader_img = data_loaders
 
     enc = prepare_models(img_dataset)
 
@@ -121,12 +156,19 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             pose_3d_enc, _, _, _ = enc(real_img, pose_2d)  # (B, n_parts, 4, 4), (B, z_dim*4), (B, n_parts)
             scaled_pose_3d = enc.scale_pose(pose_3d[:, :, :3, 3:])
 
-            loss = (mse(pose_3d[:, :, :3, :3], pose_3d_enc[:, :, :3, :3]) +  # rotation loss
-                    mse(scaled_pose_3d, pose_3d_enc[:, :, :3, 3:]))  # translation loss
+            loss_dict = {}
+            loss_rotation = mse(pose_3d[:, :, :3, :3], pose_3d_enc[:, :, :3, :3])
+            loss_translation = mse(scaled_pose_3d, pose_3d_enc[:, :, :3, 3:])
+
+            loss = loss_rotation + loss_translation
+            loss_dict["loss_rotation"] = loss_rotation
+            loss_dict["loss_translation"] = loss_translation
 
             if rank == 0:
-                print(iter)
-                write(iter, loss, "loss", writer)
+                if iter % 100 == 0:
+                    print(iter)
+                    for k, v in loss_dict.items():
+                        write(iter, v, k, writer, True)
 
             loss.backward()
             enc_optimizer.step()
@@ -137,6 +179,11 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 if iter == 10:
                     with open(f"{out_dir}/result/{out_name}/iter_10_succeeded.txt", "w") as f:
                         f.write("ok")
+                if (iter + 1) % 1000 == 0:
+                    loss_dict_val = evaluate(enc, test_loader_img)
+                    for k, v in loss_dict_val.items():
+                        write(iter, v, k, writer, True)
+
                 if (iter + 1) % 200 == 0:
                     if ddp:
                         enc_module = enc.module
@@ -155,8 +202,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default="configs/NARF_GAN/THUman/20210903.yml")
-    parser.add_argument('--default_config', type=str, default="configs/NARF_GAN_from_2d/default.yml")
+    parser.add_argument('--config', type=str, default="configs/Encoder/THUman/20210903.yml")
+    parser.add_argument('--default_config', type=str, default="configs/Encoder/default.yml")
     parser.add_argument('--resume_latest', action="store_true")
     parser.add_argument('--num_workers', type=int, default=1)
 
