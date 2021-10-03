@@ -118,19 +118,22 @@ class NeRFNRGenerator(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, parents: np.ndarray, intrinsic: np.ndarray):
+    def __init__(self, config, parents: np.ndarray, intrinsic: np.ndarray):
         super(Encoder, self).__init__()
         resnet = torchvision.models.resnet18(pretrained=True)
         # remove MaxPool, AvgPool, and linear
         self.image_encoder = nn.Sequential(*[l for l in resnet.children() if not isinstance(l, nn.MaxPool2d)][:-2])
-        self.image_feat_dim = 512
-        self.image_size = 128
-        self.z_dim = 256
+        self.image_feat_dim = config.image_feat_dim
+        self.image_size = config.image_size
+        self.z_dim = config.z_dim
 
-        transformer_hidden_dim = 256
-        transformer_n_head = 4
+        transformer_hidden_dim = config.transformer_hidden_dim
+        transformer_n_head = config.transformer_n_head
+        num_encoder_layers = config.num_encoder_layers
+        num_decoder_layers = config.num_decoder_layers
+
         self.transformer = nn.Transformer(d_model=transformer_hidden_dim, nhead=transformer_n_head,
-                                          num_encoder_layers=2, num_decoder_layers=2,
+                                          num_encoder_layers=num_encoder_layers, num_decoder_layers=num_decoder_layers,
                                           dim_feedforward=transformer_hidden_dim)
 
         self.linear_image = nn.Linear(self.image_feat_dim, transformer_hidden_dim)

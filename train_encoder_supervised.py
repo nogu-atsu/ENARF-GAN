@@ -56,8 +56,8 @@ def create_dataloader(config_dataset):
     return (img_dataset, test_img_dataset), (loader_img, test_loader_img)
 
 
-def prepare_models(img_dataset):
-    enc = Encoder(img_dataset.parents, img_dataset.cp.intrinsics)
+def prepare_models(enc_config, img_dataset):
+    enc = Encoder(enc_config, img_dataset.parents, img_dataset.cp.intrinsics)
     return enc
 
 
@@ -106,7 +106,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
     img_dataset, test_img_dataset = datasets
     loader_img, test_loader_img = data_loaders
 
-    enc = prepare_models(img_dataset)
+    enc = prepare_models(config.encoder_params, img_dataset)
 
     num_gpus = torch.cuda.device_count()
     n_gpu = rank % num_gpus

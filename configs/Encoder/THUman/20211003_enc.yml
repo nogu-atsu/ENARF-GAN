@@ -1,0 +1,38 @@
+# NARF + Neural Rendering + GAN
+# paths
+out_root: /data/unagi0/noguchi/D1/NARF_GAN
+out: THUman/20211002_enc
+
+dataset:
+  name: human
+  bs: 512  # batchsize
+  image_size: 128
+  train:
+    random_background: False
+    data_root: /data/unagi0/noguchi/dataset/THUman/all_person  # <- need change
+    background_path: /data/unagi0/noguchi/dataset/lsun/bedroom128.npy
+  test:
+    random_background: False
+    data_root: /data/unagi0/noguchi/dataset/THUman/all_person  # <- need change
+    background_path: /data/unagi0/noguchi/dataset/lsun/bedroom128.npy
+
+
+loss:
+  adv_loss_type: ce
+  bone_guided_coef: 10
+  nerf_coef: 1
+  color_coef: 1
+  mask_coef: 3
+  push_to_background_coef: 5
+  nerf_loss_type: mse
+  ignore_boundary: False
+  suppress_small: False
+  r1_loss_coef: 10
+
+consistency_regularization: False
+consistency_regularization_coef: 0.0
+
+num_iter: 50000
+
+# snapshots
+#resume: /data/unagi0/noguchi/D1/unsupervised_pose_disentanglement/NARF_GAN/result/THUman/20210910/snapshot_latest.pth
