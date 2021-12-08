@@ -14,15 +14,32 @@ dataset:
     train: True
     n_mesh: 3545
     n_rendered_per_mesh: 10
-    n_imgs_per_mesh: 10
+    n_imgs_per_mesh: 8
+  test:
+    random_background: True
+    data_root: path_to_your_dataset_root  # <- need change
+    background_path:
+    train: False
+    n_mesh: 3545
+    n_rendered_per_mesh: 10
+    n_imgs_per_mesh: 2
 
+encoder_params:
+  image_feat_dim: 512
+  image_size: 128
+  z_dim: 256
+  transformer_hidden_dim: 256
+  transformer_n_head: 4
+  num_encoder_layers: 2
+  num_decoder_layers: 2
 
 generator_params:
-  no_nerf_bn: True
+#  no_nerf_bn: True
   z_dim: 256
   patch_size: 24
-  z_bg_dim: 0
-  use_nerf: True
+  cnn_based: False
+#  z_bg_dim: 0
+#  use_nerf: True
   nerf_params:
     hidden_size: 32  # hidden size of NeRF
     out_dim: 256  # output channel of NeRF
@@ -30,15 +47,15 @@ generator_params:
     Nf: 48  # number of points for fine sampling
     no_world_pose: False
     no_ray_direction: False
-    use_direction_coef: False
-    render_version: 1
+#    use_direction_coef: False
+#    render_version: 1
     arf_temperature: 0.1
     sum_density: False
     concat_pose: False
-    siren: False
+#    siren: False
     concat: False
-    smooth: False
-    density_activation: MyReLU
+#    smooth: False
+#    density_activation: MyReLU
     density_scale: 1
     detach_alpha: False
     se3: False
@@ -48,7 +65,7 @@ generator_params:
     mask_bone_length: False
     mask_before_PE: False
     selector_activation: softmax
-    hard_mask: False
+#    hard_mask: False
     use_scale_factor: True
     weighted_average: False
     selector_adaptive_tmp:
@@ -56,8 +73,11 @@ generator_params:
       gamma: 1
       min: 1
     # siren model
-    film_w: 1
-    groupconv_first: False
+#    film_w: 1
+#    groupconv_first: False
+    # positional encoding
+    num_frequency_for_position: 5
+    num_frequency_for_other: 4
 
 discriminator_params:
   minibatch_std: True
@@ -70,9 +90,10 @@ loss:
   mask_coef: 1
   push_to_background_coef: 5
   nerf_loss_type: mse
-  ignore_boundary: False
-  suppress_small: False
   r1_loss_coef: 0.01
+  loss_adv_gen_img_coef: 0.5
+  loss_adv_gen_pose_coef: 5
+  distance_coef: 0
 
 consistency_regularization: False
 consistency_regularization_coef: 0.0

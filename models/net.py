@@ -5,7 +5,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from NARF.models.net import NeRF
-from NARF.models.tiny_utils import whole_image_grid_ray_sampler
+from NARF.models.model_utils import whole_image_grid_ray_sampler
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d
 from utils.rotation_utils import rotation_6d_to_matrix
@@ -46,7 +46,7 @@ class NeuralRenderer(nn.Module):
         return color
 
 
-class NeRFNRGenerator(nn.Module):
+class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
     def __init__(self, config, size, intrinsics=None, num_bone=1, parent_id=None, num_bone_param=None):
         super(NeRFNRGenerator, self).__init__()
         self.config = config
@@ -77,7 +77,8 @@ class NeRFNRGenerator(nn.Module):
     def flops(self):
         return self.nerf.flops
 
-    def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None):
+    def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
+                return_intermediate=False):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -86,6 +87,7 @@ class NeRFNRGenerator(nn.Module):
         :param background:
         :param z: latent vector
         :param inv_intrinsics:
+        :param return_intermediate:
         :return:
         """
         assert self.num_bone == 1 or (bone_length is not None and pose_to_camera is not None)
@@ -101,11 +103,14 @@ class NeRFNRGenerator(nn.Module):
         if inv_intrinsics is None:
             inv_intrinsics = self.inv_intrinsics
         inv_intrinsics = torch.tensor(inv_intrinsics).float().cuda(homo_img.device)
-        low_res_feature, low_res_mask = self.nerf(batchsize, patch_size ** 2, homo_img,
-                                                  pose_to_camera, inv_intrinsics, z_for_nerf,
-                                                  pose_to_world, bone_length, thres=0.0,
-                                                  Nc=self.config.nerf_params.Nc,
-                                                  Nf=self.config.nerf_params.Nf)
+        nerf_output = self.nerf(batchsize, patch_size ** 2, homo_img,
+                                pose_to_camera, inv_intrinsics, z_for_nerf,
+                                pose_to_world, bone_length, thres=0.0,
+                                Nc=self.config.nerf_params.Nc,
+                                Nf=self.config.nerf_params.Nf,
+                                return_intermediate=return_intermediate)
+
+        low_res_feature, low_res_mask = nerf_output[:2]
         low_res_feature = low_res_feature.reshape(batchsize, self.nerf.out_dim, patch_size, patch_size)
         low_res_mask = low_res_mask.reshape(batchsize, patch_size, patch_size)
 
@@ -113,6 +118,10 @@ class NeRFNRGenerator(nn.Module):
 
         rendered_color = self.neural_renderer(low_res_feature, low_res_mask,
                                               bg_feature, z_for_neural_render)
+
+        if return_intermediate:
+            fine_points, fine_density = nerf_output[-1]
+            return rendered_color, low_res_mask, fine_points, fine_density
 
         return rendered_color, low_res_mask
 
@@ -126,6 +135,7 @@ class Encoder(nn.Module):
         self.image_feat_dim = config.image_feat_dim
         self.image_size = config.image_size
         self.z_dim = config.z_dim
+        self.num_bone = parents.shape[0]
 
         transformer_hidden_dim = config.transformer_hidden_dim
         transformer_n_head = config.transformer_n_head
@@ -135,6 +145,11 @@ class Encoder(nn.Module):
         self.transformer = nn.Transformer(d_model=transformer_hidden_dim, nhead=transformer_n_head,
                                           num_encoder_layers=num_encoder_layers, num_decoder_layers=num_decoder_layers,
                                           dim_feedforward=transformer_hidden_dim)
+
+        self.image_positional_encoding = nn.Parameter(torch.randn((self.image_size // 16) ** 2, 1,
+                                                                  transformer_hidden_dim))
+        self.pose_positional_encoding = nn.Parameter(torch.randn(self.num_bone, 1,
+                                                                 transformer_hidden_dim))
 
         self.linear_image = nn.Linear(self.image_feat_dim, transformer_hidden_dim)
         self.linear_pose = nn.Linear(2, transformer_hidden_dim)
@@ -152,6 +167,31 @@ class Encoder(nn.Module):
         bone_length = torch.linalg.norm(pose[:, 1:] - pose[:, self.parents[1:]], dim=2)[:, :, 0]  # (B, n_parts-1)
         mean_bone_length = bone_length.mean(dim=1)
         return pose / mean_bone_length[:, None, None, None] * self.mean_bone_length
+
+    def get_rotation_matrix(self, d6: torch.Tensor, pose_translation: torch.tensor,
+                            parent: torch.tensor) -> torch.Tensor:
+        """
+        Converts 6D rotation representation by Zhou et al. [1] to rotation matrix
+        using Gram--Schmidt orthogonalization per Section B of [1].
+        Args:
+            d6: 6D rotation representation, of size (*, 6)
+            pose_translation: (B, n_parts, 3, 1)
+            parent:
+        Returns:
+            batch of rotation matrices of size (*, 3, 3)
+        [1] Zhou, Y., Barnes, C., Lu, J., Yang, J., & Li, H.
+        On the Continuity of Rotation Representations in Neural Networks.
+        IEEE Conference on Computer Vision and Pattern Recognition, 2019.
+        Retrieved from http://arxiv.org/abs/1812.07035
+        """
+        a1, a2 = d6[..., :3], d6[..., 3:]
+        parent_child = pose_translation[:, self.parents[1:], :, 0] - pose_translation[:, 1:, :, 0]
+        a1 = torch.cat([a1[:, :1], parent_child], dim=1)  # (B, num_parts, 3)
+        b1 = F.normalize(a1, dim=-1)
+        b2 = a2 - (b1 * a2).sum(-1, keepdim=True) * b1
+        b2 = F.normalize(b2, dim=-1)
+        b3 = torch.cross(b1, b2, dim=-1)
+        return torch.stack((b1, b2, b3), dim=-1)
 
     def forward(self, img: torch.tensor, pose_2d: torch.tensor):
         """estimate 3d pose from image and GT 2d pose
@@ -182,6 +222,10 @@ class Encoder(nn.Module):
 
         pose_feature = normalized_pose_2d.permute(1, 0, 2)  # (n_parts, B, 2)
         pose_feature = self.linear_pose(pose_feature)
+
+        # positional encoding
+        image_feature = image_feature + self.image_positional_encoding
+        pose_feature = pose_feature + self.pose_positional_encoding
 
         h = self.transformer(image_feature, pose_feature)  # (n_parts, B, transformer_hidden_dim)
         h = self.linear_out(h)  # (n_parts, B, 7)

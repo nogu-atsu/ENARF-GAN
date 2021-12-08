@@ -169,7 +169,8 @@ class THUmanDataset(Dataset):
 
         img, background = self.preprocess_img(img)
 
-        pose_to_camera = self.pose_to_camera[i]
+        pose_to_camera = self.pose_to_camera[i].copy()
+        pose_to_camera[:, 3, 3] = 1
         pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
         pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
         pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
@@ -180,17 +181,17 @@ class THUmanDataset(Dataset):
         if self.multiview:
             mesh_id = i // self.n_imgs_per_mesh
             i_other_view = random.randint(mesh_id * self.n_imgs_per_mesh,
-                                          (mesh_id - 1) * self.n_imgs_per_mesh - 1)
+                                          (mesh_id + 1) * self.n_imgs_per_mesh - 1)
             img_other_view = self.imgs[i_other_view]
-            img_other_view, _ = self.preprocess_img(img_other_view)
+            img_other_view, _ = self.preprocess_img(img_other_view, background)
 
-            pose_3d_other_view = self.pose_to_camera[i_other_view]
-
-            relative_rotation = np.mutmal(pose_3d_other_view, np.linalg.inv(pose_to_camera))
-            assert np.square(relative_rotation[:, 0] - relative_rotation[:, 1]).sum() < 1e-6
+            pose_3d_other_view = self.pose_to_camera[i_other_view].copy()
+            pose_3d_other_view[:, 3, 3] = 1
+            relative_rotation = np.matmul(pose_3d_other_view, np.linalg.inv(pose_to_camera))
+            assert np.square(relative_rotation[0] - relative_rotation[1]).sum() < 1e-3
 
             return_dict["img_other_view"] = img_other_view
-            return_dict["relative_rotation"] = relative_rotation[:, 0]  # (B, 4, 4)
+            return_dict["relative_rotation"] = relative_rotation[0]  # (B, 4, 4)
             return_dict["pose_3d_other_view"] = pose_3d_other_view
 
         return return_dict
@@ -218,7 +219,7 @@ class THUmanPoseDataset(Dataset):
 
         self.parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9,
                                  12, 13, 14, 16, 17, 18, 19, 20, 21])
-
+        self.hpp.prev_seq = self.parents
         self.deterministic = False
 
     def __len__(self):
@@ -334,9 +335,9 @@ class THUmanPoseDataset(Dataset):
         bone_length = self.get_bone_length(joint_mat_world)
 
         joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world, camera_mat)
-        joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
+        # joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
-        disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_, joint_pos_image,
+        disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera, joint_pos_image,
                                                                           self.size)
 
         return (disparity,  # size x size
@@ -377,11 +378,10 @@ class THUmanPoseDataset(Dataset):
             bone_length = self.get_bone_length(joint_mat_world_orig)
 
             joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world_orig, camera_mat)
-            joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
+            # joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
-            disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_,
-                                                                              joint_pos_image,
-                                                                              self.size)
+            disparity, mask, part_bone_disparity, keypoint_mask = None, None, None, None
+            # create_mask(self.hpp, joint_mat_camera,   joint_pos_image,    self.size)
 
             batch.append((disparity,  # size x size
                           mask,  # size x size
@@ -516,17 +516,18 @@ class THUmanPoseDataset(Dataset):
             bone_length = self.get_bone_length(mixed_pose_to_world_orig)
 
             joint_mat_camera, joint_pos_image = self.cp.process_mat(mixed_pose_to_world_orig, camera_mat)
-            joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
+            # joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
-            disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_,
-                                                                              joint_pos_image,
-                                                                              self.size)
+            disparity, mask, part_bone_disparity, keypoint_mask = None, None, None, None
+            # disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera,
+            #                                                                   joint_pos_image,
+            #                                                                   self.size)
 
             batch.append((disparity,  # size x size
                           mask,  # size x size
                           part_bone_disparity,  # num_joint x size x size
                           joint_mat_camera.astype("float32"),  # num_joint x 4 x 4
-                          mixed_pose_to_world.astype("float32"),  # num_joint x 4 x 4
+                          mixed_pose_to_world_orig.astype("float32"),  # num_joint x 4 x 4
                           keypoint_mask,  # num_joint x size x size
                           bone_length.astype("float32"),  # num_bone x 1
                           ))
