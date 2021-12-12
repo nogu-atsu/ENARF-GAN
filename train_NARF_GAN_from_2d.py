@@ -17,6 +17,7 @@ from models.net import NeRFNRGenerator, Encoder, PoseDiscriminator
 from models.stylegan import Discriminator
 from utils.mask_utils import create_bone_mask
 from utils.rotation_utils import rotate_pose_randomly
+from utils.evaluation_utils import pampjpe
 
 
 def train(train_func, config):
@@ -70,9 +71,9 @@ def prepare_models(enc_config, gen_config, dis_config, img_dataset, size):
     return enc, gen, dis, pdis
 
 
+
 def evaluate(enc, test_loader):
     print("validation")
-    mse = nn.MSELoss()
     enc.eval()
     # loss_rotation = 0
     loss_translation = 0
@@ -84,16 +85,16 @@ def evaluate(enc, test_loader):
             bs = real_img.shape[0]
 
             pose_3d, z, bone_length, intrinsic = enc(real_img, pose_2d)
-            scaled_pose_3d_gt = enc.scale_pose(pose_3d_gt[:, :, :3, 3:])
-            # loss_rotation += mse(pose_3d[:, :, :3, :3], pose_3d_gt[:, :, :3, :3]) * bs
-            loss_translation += mse(pose_3d[:, :, :3, 3:], scaled_pose_3d_gt) * bs
+            # scaled_pose_3d_gt = enc.scale_pose(pose_3d_gt[:, :, :3, 3:])
 
-    # loss_rotation = loss_rotation / len(test_loader.dataset)
+            # PAMPJPE
+            loss_translation += pampjpe(pose_3d[:, :, :3, 3:].cpu().numpy(),
+                                        pose_3d_gt[:, :, :3, 3:].cpu().numpy()) * bs
+
     loss_translation = loss_translation / len(test_loader.dataset)
 
     loss_dict = {}
-    # loss_dict["loss_rotation_val"] = loss_rotation
-    loss_dict["loss_translation_val"] = loss_translation
+    loss_dict["pampjpe_val"] = loss_translation
 
     enc.train()
 
@@ -313,6 +314,10 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 if iter == 10:
                     with open(f"{out_dir}/result/{out_name}/iter_10_succeeded.txt", "w") as f:
                         f.write("ok")
+                if (iter + 1) % 1000 == 0:
+                    loss_dict_val = evaluate(enc, test_loader_img)
+                    for k, v in loss_dict_val.items():
+                        write(iter, v, k, writer)
                 if iter % 50 == 0:
                     print(fake_img.shape)
                     save_img(fake_img, f"{out_dir}/result/{out_name}/rgb_{iter // 5000 * 5000}.png")
