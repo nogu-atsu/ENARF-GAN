@@ -16,7 +16,7 @@ from NARF.models.utils_3d import THUmanPrior, CameraProjection, create_mask
 class THUmanDataset(Dataset):
     """THUman dataset"""
 
-    def __init__(self, config, size=128, return_bone_params=False,
+    def __init__(self, config, size=128, return_bone_params=True,
                  return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False,
                  multiview: bool = False):
         random.seed()
@@ -40,7 +40,8 @@ class THUmanDataset(Dataset):
         self.just_cache = just_cache
 
         self.imgs = self.cache_image()
-        self.pose_to_world_, self.pose_to_camera_, self.inv_intrinsics_ = self.cache_bone_params()
+        if self.return_bone_params:
+            self.pose_to_world_, self.pose_to_camera_, self.inv_intrinsics_ = self.cache_bone_params()
         if just_cache:
             return
 
@@ -56,16 +57,18 @@ class THUmanDataset(Dataset):
         self.parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9,
                                  12, 13, 14, 16, 17, 18, 19, 20, 21])
 
-        self.pose_to_camera = self.pose_to_camera_[data_idx]
-        if self.inv_intrinsics_ is not None:
-            self.inv_intrinsics = self.inv_intrinsics_[data_idx]
+        if self.return_bone_params:
+            self.pose_to_world = self.pose_to_world_[data_idx]
+            self.pose_to_camera = self.pose_to_camera_[data_idx]
+            if self.inv_intrinsics_ is not None:
+                self.inv_intrinsics = self.inv_intrinsics_[data_idx]
 
-        self.cp = CameraProjection(size=size)
-        self.hpp = THUmanPrior()
-        self.num_bone = 24
-        self.num_bone_param = self.num_bone - 1
-        self.num_valid_keypoints = self.hpp.num_valid_keypoints
-        self.intrinsics = self.cp.intrinsics
+            self.cp = CameraProjection(size=size)
+            self.hpp = THUmanPrior()
+            self.num_bone = 24
+            self.num_bone_param = self.num_bone - 1
+            self.num_valid_keypoints = self.hpp.num_valid_keypoints
+            self.intrinsics = self.cp.intrinsics
 
     def cache_image(self):
         if os.path.exists(f"{self.data_root}/render_{self.size}.npy"):
@@ -168,15 +171,23 @@ class THUmanDataset(Dataset):
         img = self.imgs[i]
 
         img, background = self.preprocess_img(img)
+        return_dict = {"img": img, "idx": self.data_idx[i]}
 
-        pose_to_camera = self.pose_to_camera[i].copy()
-        pose_to_camera[:, 3, 3] = 1
-        pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
-        pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
-        pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
-        pose_2d = pose_2d.astype("float32")
+        if self.return_bone_params:
+            pose_to_camera = self.pose_to_camera[i].copy()
+            pose_to_camera[:, 3, 3] = 1
+            pose_to_world = self.pose_to_world[i].copy()
+            pose_to_world[:, 3, 3] = 1
+            bone_length = self.get_bone_length(pose_to_world)
+            pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
+            pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
+            pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
+            pose_2d = pose_2d.astype("float32")
 
-        return_dict = {"img": img, "idx": self.data_idx[i], "pose_2d": pose_2d, "pose_3d": pose_to_camera}
+            return_dict["pose_2d"] = pose_2d
+            return_dict["pose_3d"] = pose_to_camera.astype("float32")
+            return_dict["pose_3d_world"] = pose_to_world.astype("float32")
+            return_dict["bone_length"] = bone_length.astype("float32")
 
         if self.multiview:
             mesh_id = i // self.n_imgs_per_mesh
@@ -213,13 +224,12 @@ class THUmanPoseDataset(Dataset):
         self.cp = CameraProjection(size=size)  # just holds camera intrinsics
         self.hpp = THUmanPrior()
 
-        self.num_bone = self.hpp.num_bone
+        self.num_bone = 24
         self.num_bone_param = self.num_bone - 1
         self.num_valid_keypoints = self.hpp.num_valid_keypoints
 
         self.parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9,
                                  12, 13, 14, 16, 17, 18, 19, 20, 21])
-        self.hpp.prev_seq = self.parents
         self.deterministic = False
 
     def __len__(self):
@@ -335,18 +345,19 @@ class THUmanPoseDataset(Dataset):
         bone_length = self.get_bone_length(joint_mat_world)
 
         joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world, camera_mat)
-        # joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
-        disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera, joint_pos_image,
+        # this is necessary for creating mask
+        joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
+
+        disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_, joint_pos_image_,
                                                                           self.size)
-
         return (disparity,  # size x size
                 mask,  # size x size
                 part_bone_disparity,  # num_joint x size x size
-                joint_mat_camera.astype("float32"),  # num_joint x 4 x 4
+                joint_mat_camera[0].astype("float32"),  # num_joint x 4 x 4
                 keypoint_mask,  # num_joint x size x size
                 bone_length.astype("float32"),  # num_bone x 1
-                joint_mat_world.astype("float32"),  # num_joint x 4 x 4
+                joint_mat_world[0].astype("float32"),  # num_joint x 4 x 4
                 )
 
     def batch_same(self, num=100):

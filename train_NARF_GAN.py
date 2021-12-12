@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from NARF.dataset import THUmanDataset, THUmanPoseDataset
+from dataset import THUmanDataset, THUmanPoseDataset
 from NARF.utils import record_setting, yaml_config, write
 from NARF.visualization_utils import save_img
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
@@ -33,7 +33,8 @@ def create_dataset(config_dataset, just_cache=False):
 
     print("loading datasets")
     if dataset_name == "human":
-        img_dataset = THUmanDataset(train_dataset_config, size=size, just_cache=just_cache)
+        img_dataset = THUmanDataset(train_dataset_config, size=size, return_bone_params=False,
+                                    just_cache=just_cache)
         pose_dataset = THUmanPoseDataset(size=size, data_root=train_dataset_config.data_root,
                                          just_cache=just_cache)
     else:
@@ -58,8 +59,8 @@ def create_dataloader(config_dataset):
 
 
 def prepare_models(gen_config, dis_config, pose_dataset, size):
-    gen = NeRFNRGenerator(gen_config, size, pose_dataset.cp.intrinsics, num_bone=pose_dataset.num_bone)
-                          # num_bone_param=pose_dataset.num_bone_param) # TODO num_bone_params
+    gen = NeRFNRGenerator(gen_config, size, pose_dataset.cp.intrinsics, num_bone=pose_dataset.num_bone,
+                          num_bone_param=pose_dataset.num_bone_param)
     dis = Discriminator(dis_config, size=size)
     return gen, dis
 

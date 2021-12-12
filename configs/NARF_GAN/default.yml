@@ -45,7 +45,7 @@ generator_params:
     max_chunk_size: 16384
     # concat model
     mask_input: False
-    mask_bone_length: True
+    mask_bone_length: False
     mask_before_PE: False
     selector_activation: softmax
     hard_mask: False
