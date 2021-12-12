@@ -166,7 +166,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             else:
                 loss_gen.backward()
 
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
             # update discriminator
             dis_fake = dis(fake_img.detach(), ddp, world_size)
@@ -218,7 +218,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                     torch.save(save_params, f"{out_dir}/result/{out_name}/snapshot_latest.pth")
                     torch.save(save_params, f"{out_dir}/result/{out_name}/snapshot_{(iter // 50000 + 1) * 50000}.pth")
 
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             iter += 1
 
 
