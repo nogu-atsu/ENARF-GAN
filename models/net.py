@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import torch
 import torchvision
@@ -61,13 +63,15 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         z_dim = config.z_dim
         hidden_size = config.nerf_params.hidden_size
         nerf_out_dim = config.nerf_params.out_dim
+        patch_size = config.patch_size
 
         self.nerf = NeRF(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
                          parent=parent_id, num_bone_param=num_bone_param)
-        self.background_generator = StyleGANGenerator(size=size // 4, style_dim=z_dim,
+        self.background_generator = StyleGANGenerator(size=patch_size, style_dim=z_dim,
                                                       n_mlp=4, last_channel=nerf_out_dim)
 
-        self.neural_renderer = NeuralRenderer(nerf_out_dim, hidden_size)
+        self.neural_renderer = NeuralRenderer(nerf_out_dim, hidden_size,
+                                              num_upsample=int(math.log(self.size // patch_size)))
 
     @property
     def memory_cost(self):
