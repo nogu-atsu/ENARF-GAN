@@ -389,16 +389,16 @@ class THUmanPoseDataset(Dataset):
             bone_length = self.get_bone_length(joint_mat_world_orig)
 
             joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world_orig, camera_mat)
-            # joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
+            joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
-            disparity, mask, part_bone_disparity, keypoint_mask = None, None, None, None
-            # create_mask(self.hpp, joint_mat_camera,   joint_pos_image,    self.size)
+            disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_,
+                                                                              joint_pos_image_, self.size)
 
             batch.append((disparity,  # size x size
                           mask,  # size x size
                           part_bone_disparity,  # num_joint x size x size
-                          joint_mat_camera.astype("float32"),  # num_joint x 4 x 4
-                          joint_mat_world.astype("float32"),  # num_joint x 4 x 4
+                          joint_mat_camera[0].astype("float32"),  # num_joint x 4 x 4
+                          joint_mat_world[0].astype("float32"),  # num_joint x 4 x 4
                           keypoint_mask,  # num_joint x size x size
                           bone_length.astype("float32"),  # num_bone x 1
                           ))
@@ -527,18 +527,17 @@ class THUmanPoseDataset(Dataset):
             bone_length = self.get_bone_length(mixed_pose_to_world_orig)
 
             joint_mat_camera, joint_pos_image = self.cp.process_mat(mixed_pose_to_world_orig, camera_mat)
-            # joint_mat_camera_, joint_pos_image = self.add_blank_part(joint_mat_camera, joint_pos_image)
+            joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
-            disparity, mask, part_bone_disparity, keypoint_mask = None, None, None, None
-            # disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera,
-            #                                                                   joint_pos_image,
-            #                                                                   self.size)
+            disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_,
+                                                                              joint_pos_image_,
+                                                                              self.size)
 
             batch.append((disparity,  # size x size
                           mask,  # size x size
                           part_bone_disparity,  # num_joint x size x size
-                          joint_mat_camera.astype("float32"),  # num_joint x 4 x 4
-                          mixed_pose_to_world_orig.astype("float32"),  # num_joint x 4 x 4
+                          joint_mat_camera[0].astype("float32"),  # num_joint x 4 x 4
+                          mixed_pose_to_world_orig[0].astype("float32"),  # num_joint x 4 x 4
                           keypoint_mask,  # num_joint x size x size
                           bone_length.astype("float32"),  # num_bone x 1
                           ))
