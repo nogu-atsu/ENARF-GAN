@@ -35,7 +35,10 @@ def create_dataset(config_dataset, just_cache=False):
     if dataset_name == "human":
         img_dataset = THUmanDataset(train_dataset_config, size=size, return_bone_params=False,
                                     just_cache=just_cache)
-        pose_dataset = THUmanPoseDataset(size=size, data_root=train_dataset_config.data_root,
+
+        pose_prior_root = train_dataset_config.pose_prior_root or train_dataset_config.data_root
+        print("pose prior:", pose_prior_root)
+        pose_dataset = THUmanPoseDataset(size=size, data_root=pose_prior_root,
                                          just_cache=just_cache)
     else:
         assert False

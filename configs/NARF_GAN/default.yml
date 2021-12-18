@@ -10,6 +10,7 @@ dataset:
   train:
     random_background: True
     data_root: path_to_your_dataset_root  # <- need change
+    pose_prior_root:  # <- need change
     background_path:
     train: True
     n_mesh: 3545
