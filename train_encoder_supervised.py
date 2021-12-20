@@ -12,6 +12,7 @@ from tqdm import tqdm
 from NARF.utils import record_setting, yaml_config, write
 from dataset import THUmanDataset
 from models.net import Encoder
+from utils.evaluation_utils import pampjpe
 
 
 def train(train_func, config):
@@ -67,6 +68,7 @@ def evaluate(enc, test_loader):
     enc.eval()
     loss_rotation = 0
     loss_translation = 0
+    pampjpe_val = 0
     with torch.no_grad():
         for minibatch in tqdm(test_loader):
             real_img = minibatch["img"].cuda(non_blocking=True).float()
@@ -78,12 +80,17 @@ def evaluate(enc, test_loader):
             scaled_pose_3d_gt = enc.scale_pose(pose_3d_gt[:, :, :3, 3:])
             loss_rotation += mse(pose_3d[:, :, :3, :3], pose_3d_gt[:, :, :3, :3]) * bs
             loss_translation += mse(pose_3d[:, :, :3, 3:], scaled_pose_3d_gt) * bs
+            pampjpe_val += pampjpe(pose_3d[:, :, :3, 3:].cpu().numpy(),
+                                   pose_3d_gt[:, :, :3, 3:].cpu().numpy()) * bs
     loss_rotation = loss_rotation / len(test_loader.dataset)
     loss_translation = loss_translation / len(test_loader.dataset)
+    pampjpe_val = pampjpe_val / len(test_loader.dataset)
 
     loss_dict = {}
     loss_dict["loss_rotation_val"] = loss_rotation
     loss_dict["loss_translation_val"] = loss_translation
+    loss_dict["pampjpe_val"] = pampjpe_val
+    print("PAMPJPE:", pampjpe_val)
 
     enc.train()
 
@@ -167,7 +174,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 if iter % 100 == 0:
                     print(iter)
                     for k, v in loss_dict.items():
-                        write(iter, v, k, writer, True)
+                        write(iter, v, k, writer)
 
             loss.backward()
             enc_optimizer.step()
@@ -181,7 +188,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 if (iter + 1) % 1000 == 0:
                     loss_dict_val = evaluate(enc, test_loader_img)
                     for k, v in loss_dict_val.items():
-                        write(iter, v, k, writer, True)
+                        write(iter, v, k, writer)
 
                 if (iter + 1) % 200 == 0:
                     if ddp:
