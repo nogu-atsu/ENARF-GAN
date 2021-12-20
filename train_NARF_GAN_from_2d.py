@@ -40,7 +40,7 @@ def create_dataset(config_dataset, just_cache=False):
     if dataset_name == "human":
         img_dataset = THUmanDataset(train_dataset_config, size=size, just_cache=just_cache)
         test_img_dataset = THUmanDataset(test_dataset_config, size=size, just_cache=just_cache,
-                                         num_repeat_in_epoch=1, multiview=True)
+                                         num_repeat_in_epoch=1)
     else:
         assert False
     return img_dataset, test_img_dataset
@@ -69,7 +69,6 @@ def prepare_models(enc_config, gen_config, dis_config, img_dataset, size):
     dis = Discriminator(dis_config, size=size)
     pdis = PoseDiscriminator(num_bone=img_dataset.num_bone)
     return enc, gen, dis, pdis
-
 
 
 def evaluate(enc, test_loader):

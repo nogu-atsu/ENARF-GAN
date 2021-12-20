@@ -71,18 +71,42 @@ class HumanDatasetBase(Dataset):
         i = random.randint(0, len(self.imgs) - 1)
         return self.__getitem__(i)
 
+    def __getitem__(self, i):
+        i = i % len(self.imgs)
+
+        img = self.imgs[i]
+
+        img, background = self.preprocess_img(img)
+        return_dict = {"img": img, "idx": self.data_idx[i]}
+
+        if self.return_bone_params:
+            pose_to_camera = self.pose_to_camera[i].copy()
+            pose_to_camera[:, 3, 3] = 1
+            pose_to_world = self.pose_to_world[i].copy()
+            pose_to_world[:, 3, 3] = 1
+            bone_length = self.get_bone_length(pose_to_world)
+            pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
+            pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
+            pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
+            pose_2d = pose_2d.astype("float32")
+
+            return_dict["pose_2d"] = pose_2d
+            return_dict["pose_3d"] = pose_to_camera.astype("float32")
+            return_dict["pose_3d_world"] = pose_to_world.astype("float32")
+            return_dict["bone_length"] = bone_length.astype("float32")
+
+        return return_dict
+
 
 class THUmanDataset(HumanDatasetBase):
     """THUman dataset"""
 
     def __init__(self, config, size=128, return_bone_params=True,
-                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False,
-                 multiview: bool = False):
+                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False):
         super(THUmanDataset, self).__init__(config, size, return_bone_params, return_bone_mask, num_repeat_in_epoch,
                                             just_cache, load_camera_intrinsics)
 
         # operations only for THUman
-        self.multiview = multiview
         self.n_mesh = config.n_mesh
         self.n_rendered_per_mesh = config.n_rendered_per_mesh
         self.n_imgs_per_mesh = config.n_imgs_per_mesh
@@ -179,48 +203,6 @@ class THUmanDataset(HumanDatasetBase):
                 inv_intrinsics = None
         return pose_to_world, pose_to_camera, inv_intrinsics
 
-    def __getitem__(self, i):
-        i = i % len(self.imgs)
-
-        img = self.imgs[i]
-
-        img, background = self.preprocess_img(img)
-        return_dict = {"img": img, "idx": self.data_idx[i]}
-
-        if self.return_bone_params:
-            pose_to_camera = self.pose_to_camera[i].copy()
-            pose_to_camera[:, 3, 3] = 1
-            pose_to_world = self.pose_to_world[i].copy()
-            pose_to_world[:, 3, 3] = 1
-            bone_length = self.get_bone_length(pose_to_world)
-            pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
-            pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
-            pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
-            pose_2d = pose_2d.astype("float32")
-
-            return_dict["pose_2d"] = pose_2d
-            return_dict["pose_3d"] = pose_to_camera.astype("float32")
-            return_dict["pose_3d_world"] = pose_to_world.astype("float32")
-            return_dict["bone_length"] = bone_length.astype("float32")
-
-        if self.multiview:
-            mesh_id = i // self.n_imgs_per_mesh
-            i_other_view = random.randint(mesh_id * self.n_imgs_per_mesh,
-                                          (mesh_id + 1) * self.n_imgs_per_mesh - 1)
-            img_other_view = self.imgs[i_other_view]
-            img_other_view, _ = self.preprocess_img(img_other_view, background)
-
-            pose_3d_other_view = self.pose_to_camera[i_other_view].copy()
-            pose_3d_other_view[:, 3, 3] = 1
-            relative_rotation = np.matmul(pose_3d_other_view, np.linalg.inv(pose_to_camera))
-            assert np.square(relative_rotation[0] - relative_rotation[1]).sum() < 1e-3
-
-            return_dict["img_other_view"] = img_other_view
-            return_dict["relative_rotation"] = relative_rotation[0]  # (B, 4, 4)
-            return_dict["pose_3d_other_view"] = pose_3d_other_view
-
-        return return_dict
-
 
 class HumanDataset(HumanDatasetBase):
     """Common human dataset class"""
@@ -258,32 +240,6 @@ class HumanDataset(HumanDatasetBase):
             extrinsic[:, :3, :3] = camera_rotation
             extrinsic[:, :3, 3:] = camera_translation
             self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world_)
-
-    def __getitem__(self, i):
-        i = i % len(self.imgs)
-
-        img = self.imgs[i]
-
-        img, background = self.preprocess_img(img)
-        return_dict = {"img": img, "idx": self.data_idx[i]}
-
-        if self.return_bone_params:
-            pose_to_camera = self.pose_to_camera[i].copy()
-            pose_to_camera[:, 3, 3] = 1
-            pose_to_world = self.pose_to_world[i].copy()
-            pose_to_world[:, 3, 3] = 1
-            bone_length = self.get_bone_length(pose_to_world)
-            pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
-            pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
-            pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
-            pose_2d = pose_2d.astype("float32")
-
-            return_dict["pose_2d"] = pose_2d
-            return_dict["pose_3d"] = pose_to_camera.astype("float32")
-            return_dict["pose_3d_world"] = pose_to_world.astype("float32")
-            return_dict["bone_length"] = bone_length.astype("float32")
-
-        return return_dict
 
 
 class THUmanPoseDataset(Dataset):
