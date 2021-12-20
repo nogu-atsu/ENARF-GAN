@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Slerp
 
 
 def rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
@@ -60,3 +62,73 @@ def rotate_pose(pose_3d: torch.tensor, R: torch.tensor):
     center = torch.cat([center, zeros_14], dim=1)[:, None]
     pose_camera_theta = torch.matmul(R[:, None], (pose_3d - center)) + center
     return pose_camera_theta
+
+
+def interpolate_pose(pose_3d: np.ndarray, parents: np.ndarray, num: int = 100, loop: bool = True):
+    """linear interpolation among poses in pose_3d
+
+    Args:
+        pose_3d: (num_pose, n_parts, 4, 4)
+        parents: (n_parts, )
+        num: number of output poses
+        loop:
+
+    Returns:
+
+    """
+    num_pose, num_parts, _, _ = pose_3d.shape
+
+    parent_mat = pose_3d[:, parents[1:]]  # num_pose x 23 x 4 x 4
+    parent_mat = np.concatenate([np.tile(np.eye(4)[None, None], (num_pose, 1, 1, 1)), parent_mat], axis=1)
+
+    child_translation = []
+    for i in range(num_pose):
+        trans_i = []
+        for j in range(num_parts):
+            trans_i.append(np.linalg.inv(parent_mat[i, j]).dot(pose_3d[i, j]))
+        child_translation.append(np.array(trans_i))
+    child_translation = np.array(child_translation)  # num_pose x 24 x 4 x 4
+
+    # interpolation (slerp)
+    interp_pose_to_world = []
+    for i in range(num_parts):
+        if loop:
+            key_rots = np.concatenate([child_translation[:, i, :3, :3],
+                                       child_translation[:1, i, :3, :3]], axis=0)  # repeat first
+            key_times = np.arange(num_pose + 1)
+            times = np.arange(num) * num_pose / num
+            interp_trans = np.concatenate([
+                np.linspace(child_translation[j, i, :3, 3],
+                            child_translation[(j + 1) % num_pose, i, :3, 3],
+                            num // num_pose, endpoint=False) for j in range(num_pose)], axis=0)  # num x 3
+        else:
+            key_rots = child_translation[:, i, :3, :3]
+            key_times = np.arange(num_pose)
+            times = np.arange(num) * (num_pose - 1) / (num - 1)
+            interp_trans = np.concatenate([
+                np.linspace(child_translation[j, i, :3, 3],
+                            child_translation[(j + 1), i, :3, 3],
+                            num // (num_pose - 1), endpoint=True) for j in range(num_pose - 1)], axis=0)  # num x 3
+        slerp = Slerp(key_times, R.from_matrix(key_rots))
+        interp_rots = slerp(times).as_matrix()  # num x 3 x 3
+
+        interp_mat = np.concatenate([interp_rots, interp_trans[:, :, None]], axis=2)
+        interp_mat = np.concatenate([interp_mat, np.tile(np.array([[[0, 0, 0, 1]]]), (num, 1, 1))],
+                                    axis=1)  # num x 4 x 4
+        interp_pose_to_world.append(interp_mat)
+    interp_pose_to_world = np.array(interp_pose_to_world)  # num_parts x num x 4 x 4
+
+    interpolated_poses = []
+    for i in range(num):
+        interp_pose = []
+        for part_idx in range(num_parts):
+            if parents[part_idx] == -1:
+                mat = np.eye(4)
+            else:
+                mat = interp_pose[parents[part_idx]]
+            mat = mat.dot(interp_pose_to_world[part_idx, i])
+
+            interp_pose.append(mat)
+
+        interpolated_poses.append(np.stack(interp_pose))
+    return np.stack(interpolated_poses)
