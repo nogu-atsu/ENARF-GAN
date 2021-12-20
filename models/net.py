@@ -71,7 +71,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
                                                       n_mlp=4, last_channel=nerf_out_dim)
 
         self.neural_renderer = NeuralRenderer(nerf_out_dim, hidden_size,
-                                              num_upsample=int(math.log(self.size // patch_size)))
+                                              num_upsample=int(math.log2(self.size // patch_size)))
 
     @property
     def memory_cost(self):
