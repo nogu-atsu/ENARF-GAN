@@ -71,6 +71,9 @@ class HumanDatasetBase(Dataset):
         i = random.randint(0, len(self.imgs) - 1)
         return self.__getitem__(i)
 
+    def get_intrinsic(self, i):
+        raise NotImplementedError()
+
     def __getitem__(self, i):
         i = i % len(self.imgs)
 
@@ -86,7 +89,9 @@ class HumanDatasetBase(Dataset):
             pose_to_world[:, 3, 3] = 1
             bone_length = self.get_bone_length(pose_to_world)
             pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
-            pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
+
+            intrinsics = self.get_intrinsic(i)
+            pose_2d = np.matmul(intrinsics, pose_translation)  # (n_bone, 3, 1)
             pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
             pose_2d = pose_2d.astype("float32")
 
@@ -94,6 +99,7 @@ class HumanDatasetBase(Dataset):
             return_dict["pose_3d"] = pose_to_camera.astype("float32")
             return_dict["pose_3d_world"] = pose_to_world.astype("float32")
             return_dict["bone_length"] = bone_length.astype("float32")
+            return_dict["intrinsics"] = intrinsics.astype("float32")  # (1, 3, 3)
 
         return return_dict
 
@@ -203,6 +209,9 @@ class THUmanDataset(HumanDatasetBase):
                 inv_intrinsics = None
         return pose_to_world, pose_to_camera, inv_intrinsics
 
+    def get_intrinsic(self, i):
+        return self.intrinsics
+
 
 class HumanDataset(HumanDatasetBase):
     """Common human dataset class"""
@@ -233,13 +242,16 @@ class HumanDataset(HumanDatasetBase):
             camera_translation = data_dict["camera_translation"]
             smpl_pose = data_dict["smpl_pose"]
 
-            self.intrinsics = np.linalg.inv(camera_intrinsic)
+            self.intrinsics = camera_intrinsic
             self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
             self.pose_to_world = smpl_pose
             extrinsic = np.broadcast_to(np.eye(4), (len(self.imgs), 4, 4))
             extrinsic[:, :3, :3] = camera_rotation
             extrinsic[:, :3, 3:] = camera_translation
-            self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world_)
+            self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
+
+    def get_intrinsic(self, i):
+        raise self.intrinsics[i]
 
 
 class THUmanPoseDataset(Dataset):
@@ -253,6 +265,7 @@ class THUmanPoseDataset(Dataset):
 
         self.cp = CameraProjection(size=size)  # just holds camera intrinsics
         self.hpp = THUmanPrior()
+        self.intrinsics = self.cp.intrinsics
 
         self.num_bone = 24
         self.num_bone_param = self.num_bone - 1
@@ -363,6 +376,9 @@ class THUmanPoseDataset(Dataset):
         pose[:, :3, 3] *= scale
         return pose
 
+    def get_intrinsic(self, i):
+        return self.intrinsics
+
     def __getitem__(self, i):
         i = i % len(self.poses)
         joint_mat_world = self.poses[i]  # 24 x 4 x 4
@@ -374,21 +390,25 @@ class THUmanPoseDataset(Dataset):
 
         bone_length = self.get_bone_length(joint_mat_world)
 
-        joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world, camera_mat)
+        intrinsics = self.get_intrinsic(i)
+        joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world, camera_mat, intrinsics)
 
         # this is necessary for creating mask
         joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
         disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_, joint_pos_image_,
                                                                           self.size)
-        return (disparity,  # size x size
-                mask,  # size x size
-                part_bone_disparity,  # num_joint x size x size
-                joint_mat_camera[0].astype("float32"),  # num_joint x 4 x 4
-                keypoint_mask,  # num_joint x size x size
-                bone_length.astype("float32"),  # num_bone x 1
-                joint_mat_world[0].astype("float32"),  # num_joint x 4 x 4
-                )
+        return_dict = {
+            # "disparity": disparity,  # size x size
+            "bone_mask": mask,  # size x size
+            # "part_disparity":part_bone_disparity,  # num_joint x size x size
+            "pose_to_camera": joint_mat_camera[0].astype("float32"),  # num_joint x 4 x 4
+            # "keypoint": keypoint_mask,  # num_joint x size x size
+            "bone_length": bone_length.astype("float32"),  # num_bone x 1
+            "pose_to_world": joint_mat_world[0].astype("float32"),  # num_joint x 4 x 4
+            "intrinsics": intrinsics.astype("float32"),  # (3, 3)
+        }
+        return return_dict
 
     def batch_same(self, num=100):
         idx = random.randint(0, len(self) - 1)
@@ -418,7 +438,8 @@ class THUmanPoseDataset(Dataset):
 
             bone_length = self.get_bone_length(joint_mat_world_orig)
 
-            joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world_orig, camera_mat)
+            intrinsics = self.get_intrinsic(i)
+            joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world_orig, camera_mat, intrinsics)
             joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
             disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_,
@@ -556,7 +577,8 @@ class THUmanPoseDataset(Dataset):
 
             bone_length = self.get_bone_length(mixed_pose_to_world_orig)
 
-            joint_mat_camera, joint_pos_image = self.cp.process_mat(mixed_pose_to_world_orig, camera_mat)
+            intrinsics = self.get_intrinsic(i)
+            joint_mat_camera, joint_pos_image = self.cp.process_mat(mixed_pose_to_world_orig, camera_mat, intrinsics)
             joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
             disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_,

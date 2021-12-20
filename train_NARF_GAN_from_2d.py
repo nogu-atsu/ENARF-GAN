@@ -63,8 +63,8 @@ def create_dataloader(config_dataset):
 
 
 def prepare_models(enc_config, gen_config, dis_config, img_dataset, size):
-    enc = Encoder(enc_config, img_dataset.parents, img_dataset.cp.intrinsics)
-    gen = NeRFNRGenerator(gen_config, size, img_dataset.cp.intrinsics, num_bone=img_dataset.num_bone,
+    enc = Encoder(enc_config, img_dataset.parents)
+    gen = NeRFNRGenerator(gen_config, size, num_bone=img_dataset.num_bone,
                           num_bone_param=img_dataset.num_bone_param)
     dis = Discriminator(dis_config, size=size)
     pdis = PoseDiscriminator(num_bone=img_dataset.num_bone)
@@ -100,7 +100,7 @@ def evaluate(enc, test_loader):
     return loss_dict
 
 
-def train_step(enc, gen, dis, pdis, real_img, pose_2d, adv_loss_type,
+def train_step(enc, gen, dis, pdis, real_img, pose_2d, intrinsic, adv_loss_type,
                enc_optimizer, gen_optimizer, dis_optimizer,
                pdis_optimizer, img_dataset, size, bone_loss_func, ddp, world_size):
     enc_optimizer.zero_grad()
@@ -111,26 +111,28 @@ def train_step(enc, gen, dis, pdis, real_img, pose_2d, adv_loss_type,
     loss_dict = {}
 
     # reconstruction
-    pose_3d, z, bone_length, intrinsic = enc(real_img,
-                                             pose_2d)  # (B, n_parts, 4, 4), (B, z_dim*4), (B, n_parts)
+    pose_3d, z, bone_length, intrinsic = enc(real_img, pose_2d,
+                                             intrinsic)  # (B, n_parts, 4, 4), (B, z_dim*4), (B, n_parts)
+    inv_intrinsic = torch.inverse(intrinsic)
 
     fake_img, fake_low_res_mask = torch.utils.checkpoint.checkpoint(gen, pose_3d, None,
-                                                                    bone_length, z)
+                                                                    bone_length, z, inv_intrinsic)
 
     mse = nn.MSELoss()
     loss_recon = mse(real_img, fake_img)
     loss_dict["loss_recon"] = loss_recon.item()
 
-    bone_mask = create_bone_mask(img_dataset.parents, pose_3d, size, intrinsic)
+    bone_mask = create_bone_mask(img_dataset.parents, pose_3d, size, intrinsic[:, None])
 
     # rotated images
     pose_3d_rotated = rotate_pose_randomly(pose_3d)
-    fake_pose2d = torch.matmul(intrinsic, pose_3d_rotated[:, :, :3, 3:])
+    fake_pose2d = torch.matmul(intrinsic[:, None], pose_3d_rotated[:, :, :3, 3:])
     fake_pose2d = fake_pose2d[:, :, :2, 0] / fake_pose2d[:, :, 2:, 0]
     (fake_img_rotated, fake_low_res_mask_rotated,
      fine_points, fine_density) = torch.utils.checkpoint.checkpoint(gen, pose_3d_rotated,
-                                                                    None, bone_length, z, None, torch.tensor(True))
-    bone_mask_rotated = create_bone_mask(img_dataset.parents, pose_3d_rotated, size, intrinsic)
+                                                                    None, bone_length, z, inv_intrinsic,
+                                                                    torch.tensor(True))
+    bone_mask_rotated = create_bone_mask(img_dataset.parents, pose_3d_rotated, size, intrinsic[:, None])
 
     loss_bone = (bone_loss_func(fake_low_res_mask, bone_mask) +
                  bone_loss_func(fake_low_res_mask_rotated, bone_mask_rotated))
@@ -293,8 +295,10 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
             real_img = minibatch["img"].cuda(non_blocking=True).float()
             pose_2d = minibatch["pose_2d"].cuda(non_blocking=True).float()
+            intrinsic = minibatch["intrinsics"].cuda(non_blocking=True).float()
             (loss_dict, fake_img, fake_img_rotated,
-             bone_mask, bone_mask_rotated) = train_step(enc, gen, dis, pdis, real_img, pose_2d, adv_loss_type,
+             bone_mask, bone_mask_rotated) = train_step(enc, gen, dis, pdis, real_img, pose_2d, intrinsic,
+                                                        adv_loss_type,
                                                         enc_optimizer, gen_optimizer, dis_optimizer,
                                                         pdis_optimizer, img_dataset, size, bone_loss_func, ddp,
                                                         world_size)
