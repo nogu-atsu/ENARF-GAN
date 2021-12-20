@@ -1,5 +1,6 @@
 import glob
 import os
+import pickle
 import random
 
 import cv2
@@ -13,12 +14,9 @@ from tqdm import tqdm
 from NARF.models.utils_3d import THUmanPrior, CameraProjection, create_mask
 
 
-class THUmanDataset(Dataset):
-    """THUman dataset"""
-
+class HumanDatasetBase(Dataset):
     def __init__(self, config, size=128, return_bone_params=True,
-                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False,
-                 multiview: bool = False):
+                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False):
         random.seed()
         self.size = size
         self.num_repeat_in_epoch = num_repeat_in_epoch
@@ -26,21 +24,72 @@ class THUmanDataset(Dataset):
         self.return_bone_params = return_bone_params
         self.return_bone_mask = return_bone_mask
 
-        self.multiview = multiview
-
         # read params from config
         self.data_root = config.data_root
         self.config = config
+        self.load_camera_intrinsics = load_camera_intrinsics
+
+        self.just_cache = just_cache
+        self.parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9,
+                                 12, 13, 14, 16, 17, 18, 19, 20, 21])
+
+        if self.return_bone_params:
+            self.cp = CameraProjection(size=size)
+            self.hpp = THUmanPrior()
+            self.num_bone = 24
+            self.num_bone_param = self.num_bone - 1
+            self.num_valid_keypoints = self.hpp.num_valid_keypoints
+            self.intrinsics = self.cp.intrinsics
+
+    def __len__(self):
+        return len(self.imgs) * self.num_repeat_in_epoch
+
+    def get_bone_length(self, pose):
+        coordinate = pose[:, :3, 3]
+        length = np.linalg.norm(coordinate[1:] - coordinate[self.parents[1:]], axis=1)
+        return length[:, None]
+
+    def preprocess_img(self, img, bg=None):
+        # bgra -> rgb, a
+        mask = img[3:] / 255.
+        img = img[:3]
+
+        # blacken background
+        img = img * mask
+        if hasattr(self, "background_imgs"):
+            if bg is None:
+                bg_idx = random.randint(0, len(self.background_imgs) - 1)
+                bg = self.background_imgs[bg_idx]
+            img = img + bg[::-1] * (1 - mask)
+
+        img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
+        img = img[::-1].copy()  # BGR2RGB
+        # mask = mask.astype("float32")  # 1 x 128 x 128
+        return img, bg
+
+    def random_sample(self):
+        i = random.randint(0, len(self.imgs) - 1)
+        return self.__getitem__(i)
+
+
+class THUmanDataset(HumanDatasetBase):
+    """THUman dataset"""
+
+    def __init__(self, config, size=128, return_bone_params=True,
+                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False,
+                 multiview: bool = False):
+        super(THUmanDataset, self).__init__(config, size, return_bone_params, return_bone_mask, num_repeat_in_epoch,
+                                            just_cache, load_camera_intrinsics)
+
+        # operations only for THUman
+        self.multiview = multiview
         self.n_mesh = config.n_mesh
         self.n_rendered_per_mesh = config.n_rendered_per_mesh
         self.n_imgs_per_mesh = config.n_imgs_per_mesh
         self.train = config.train
-        self.load_camera_intrinsics = load_camera_intrinsics
-
-        self.just_cache = just_cache
 
         self.imgs = self.cache_image()
-        if self.return_bone_params:
+        if self.return_bone_params:  # Need this here for just_cache==True
             self.pose_to_world_, self.pose_to_camera_, self.inv_intrinsics_ = self.cache_bone_params()
         if just_cache:
             return
@@ -54,21 +103,12 @@ class THUmanDataset(Dataset):
         self.data_idx = data_idx
 
         self.imgs = self.imgs[data_idx]
-        self.parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9,
-                                 12, 13, 14, 16, 17, 18, 19, 20, 21])
 
         if self.return_bone_params:
             self.pose_to_world = self.pose_to_world_[data_idx]
             self.pose_to_camera = self.pose_to_camera_[data_idx]
             if self.inv_intrinsics_ is not None:
                 self.inv_intrinsics = self.inv_intrinsics_[data_idx]
-
-            self.cp = CameraProjection(size=size)
-            self.hpp = THUmanPrior()
-            self.num_bone = 24
-            self.num_bone_param = self.num_bone - 1
-            self.num_valid_keypoints = self.hpp.num_valid_keypoints
-            self.intrinsics = self.cp.intrinsics
 
     def cache_image(self):
         if os.path.exists(f"{self.data_root}/render_{self.size}.npy"):
@@ -139,32 +179,6 @@ class THUmanDataset(Dataset):
                 inv_intrinsics = None
         return pose_to_world, pose_to_camera, inv_intrinsics
 
-    def __len__(self):
-        return len(self.imgs) * self.num_repeat_in_epoch
-
-    def get_bone_length(self, pose):
-        coordinate = pose[:, :3, 3]
-        length = np.linalg.norm(coordinate[1:] - coordinate[self.parents[1:]], axis=1)
-        return length[:, None]
-
-    def preprocess_img(self, img, bg=None):
-        # bgra -> rgb, a
-        mask = img[3:] / 255.
-        img = img[:3]
-
-        # blacken background
-        img = img * mask
-        if hasattr(self, "background_imgs"):
-            if bg is None:
-                bg_idx = random.randint(0, len(self.background_imgs) - 1)
-                bg = self.background_imgs[bg_idx]
-            img = img + bg[::-1] * (1 - mask)
-
-        img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
-        img = img[::-1].copy()  # BGR2RGB
-        # mask = mask.astype("float32")  # 1 x 128 x 128
-        return img, bg
-
     def __getitem__(self, i):
         i = i % len(self.imgs)
 
@@ -207,9 +221,69 @@ class THUmanDataset(Dataset):
 
         return return_dict
 
-    def random_sample(self):
-        i = random.randint(0, len(self.imgs) - 1)
-        return self.__getitem__(i)
+
+class HumanDataset(HumanDatasetBase):
+    """Common human dataset class"""
+
+    def __init__(self, config, size=128, return_bone_params=True,
+                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False,
+                 **kwargs):
+        super(HumanDataset, self).__init__(config, size, return_bone_params, return_bone_mask, num_repeat_in_epoch,
+                                           just_cache, load_camera_intrinsics)
+
+        # common operations
+        self.load_cache()
+        if just_cache:
+            return
+
+        self.data_idx = np.arange(len(self.imgs))
+
+    def load_cache(self):
+        cache_path = f"{self.data_root}/cache.pickle"
+        assert os.path.exists(cache_path)
+        with open(cache_path, "rb") as f:
+            data_dict = pickle.load(f)
+
+        self.imgs = data_dict["img"]
+        if self.return_bone_params:
+            camera_intrinsic = data_dict["camera_intrinsic"] if self.load_camera_intrinsics else None
+            camera_rotation = data_dict["camera_rotation"]
+            camera_translation = data_dict["camera_translation"]
+            smpl_pose = data_dict["smpl_pose"]
+
+            self.intrinsics = np.linalg.inv(camera_intrinsic)
+            self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
+            self.pose_to_world = smpl_pose
+            extrinsic = np.broadcast_to(np.eye(4), (len(self.imgs), 4, 4))
+            extrinsic[:, :3, :3] = camera_rotation
+            extrinsic[:, :3, 3:] = camera_translation
+            self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world_)
+
+    def __getitem__(self, i):
+        i = i % len(self.imgs)
+
+        img = self.imgs[i]
+
+        img, background = self.preprocess_img(img)
+        return_dict = {"img": img, "idx": self.data_idx[i]}
+
+        if self.return_bone_params:
+            pose_to_camera = self.pose_to_camera[i].copy()
+            pose_to_camera[:, 3, 3] = 1
+            pose_to_world = self.pose_to_world[i].copy()
+            pose_to_world[:, 3, 3] = 1
+            bone_length = self.get_bone_length(pose_to_world)
+            pose_translation = pose_to_camera[:, :3, 3:]  # (n_bone, 3, 1)
+            pose_2d = np.matmul(self.intrinsics, pose_translation)  # (n_bone, 3, 1)
+            pose_2d = pose_2d[:, :2, 0] / pose_2d[:, 2:, 0]  # (n_bone, 2)
+            pose_2d = pose_2d.astype("float32")
+
+            return_dict["pose_2d"] = pose_2d
+            return_dict["pose_3d"] = pose_to_camera.astype("float32")
+            return_dict["pose_3d_world"] = pose_to_world.astype("float32")
+            return_dict["bone_length"] = bone_length.astype("float32")
+
+        return return_dict
 
 
 class THUmanPoseDataset(Dataset):
