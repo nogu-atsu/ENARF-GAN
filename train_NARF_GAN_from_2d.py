@@ -81,9 +81,10 @@ def evaluate(enc, test_loader):
             real_img = minibatch["img"].cuda(non_blocking=True).float()
             pose_2d = minibatch["pose_2d"].cuda(non_blocking=True).float()
             pose_3d_gt = minibatch["pose_3d"].cuda(non_blocking=True).float()
+            intrinsic = minibatch["intrinsics"].cuda(non_blocking=True).float()
             bs = real_img.shape[0]
 
-            pose_3d, z, bone_length, intrinsic = enc(real_img, pose_2d)
+            pose_3d, z, bone_length, intrinsic = enc(real_img, pose_2d, intrinsic)
             # scaled_pose_3d_gt = enc.scale_pose(pose_3d_gt[:, :, :3, 3:])
 
             # PAMPJPE

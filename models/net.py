@@ -49,14 +49,10 @@ class NeuralRenderer(nn.Module):
 
 
 class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
-    def __init__(self, config, size, intrinsics=None, num_bone=1, parent_id=None, num_bone_param=None):
+    def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None):
         super(NeRFNRGenerator, self).__init__()
         self.config = config
         self.size = size
-        self.intrinsics = intrinsics
-        self.inv_intrinsics = np.linalg.inv(intrinsics)
-        normalized_intrinsics = np.concatenate([intrinsics[:2] / size, np.array([[0, 0, 1]])], axis=0)
-        self.normalized_inv_intrinsics = np.linalg.inv(normalized_intrinsics)
         self.num_bone = num_bone
         self.ray_sampler = whole_image_grid_ray_sampler
 
@@ -72,6 +68,11 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
 
         self.neural_renderer = NeuralRenderer(nerf_out_dim, hidden_size,
                                               num_upsample=int(math.log2(self.size // patch_size)))
+
+    def normalized_inv_intrinsics(self, intrinsics: torch.tensor):
+        normalized_intrinsics = torch.cat([intrinsics[:2] / self.size, intrinsics.new([[0, 0, 1]])], dim=0)
+        normalized_inv_intri = torch.linalg.inv(normalized_intrinsics)
+        return normalized_inv_intri
 
     @property
     def memory_cost(self):
@@ -104,8 +105,6 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         z_for_nerf, z_for_neural_render, z_for_background = torch.split(z, [z_dim * 2, z_dim, z_dim], dim=1)
 
         # sparse rendering
-        if inv_intrinsics is None:
-            inv_intrinsics = self.inv_intrinsics
         inv_intrinsics = torch.tensor(inv_intrinsics).float().cuda(homo_img.device)
         nerf_output = self.nerf(batchsize, patch_size ** 2, homo_img,
                                 pose_to_camera, inv_intrinsics, z_for_nerf,
@@ -131,7 +130,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, parents: np.ndarray, intrinsic: np.ndarray):
+    def __init__(self, config, parents: np.ndarray):
         super(Encoder, self).__init__()
         resnet = torchvision.models.resnet18(pretrained=True)
         # remove MaxPool, AvgPool, and linear
@@ -163,7 +162,7 @@ class Encoder(nn.Module):
         self.conv_z = nn.Conv2d(self.image_feat_dim, self.z_dim * 4, 3, 2, 1)
         self.linear_z = nn.Linear(self.z_dim * 4, self.z_dim * 4)
 
-        self.intrinsic = intrinsic.astype("float32")
+        # self.intrinsic = intrinsic.astype("float32")
         self.parents = parents  # parent ids
         self.mean_bone_length = 0.15  # mean length of bone. Should be calculated from dataset??
 
@@ -197,7 +196,7 @@ class Encoder(nn.Module):
         b3 = torch.cross(b1, b2, dim=-1)
         return torch.stack((b1, b2, b3), dim=-1)
 
-    def forward(self, img: torch.tensor, pose_2d: torch.tensor):
+    def forward(self, img: torch.tensor, pose_2d: torch.tensor, intrinsic: torch.tensor):
         """estimate 3d pose from image and GT 2d pose
 
         Args:
@@ -207,8 +206,8 @@ class Encoder(nn.Module):
         Returns:
 
         """
-        intrinsic = torch.tensor(self.intrinsic, device=img.device)
-        inv_intrinsic = torch.inverse(intrinsic)
+        intrinsic = torch.tensor(intrinsic, device=img.device)
+        inv_intrinsic = torch.inverse(intrinsic)[:, None]
         batchsize = img.shape[0]
         feature_size = self.image_size // 16
         image_feature = self.image_encoder(img)
@@ -241,7 +240,8 @@ class Encoder(nn.Module):
         rotation_matrix = rotation_matrix.permute(1, 0, 2, 3)
 
         pose_homo = torch.cat([pose_2d, torch.ones_like(pose_2d[:, :, :1])], dim=2) * depth.permute(1, 0)[:, :, None]
-        pose_translation = torch.matmul(inv_intrinsic, pose_homo[:, :, :, None])  # (B, n_parts, 3, 1)
+        pose_translation = torch.matmul(inv_intrinsic,
+                                        pose_homo[:, :, :, None])  # (B, n_parts, 3, 1)
         pose_translation = self.scale_pose(pose_translation)
 
         pose_Rt = torch.cat([rotation_matrix, pose_translation], dim=-1)  # (B, n_parts, 3, 4)
