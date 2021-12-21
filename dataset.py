@@ -217,7 +217,7 @@ class HumanDataset(HumanDatasetBase):
     """Common human dataset class"""
 
     def __init__(self, config, size=128, return_bone_params=True,
-                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False,
+                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=True,
                  **kwargs):
         super(HumanDataset, self).__init__(config, size, return_bone_params, return_bone_mask, num_repeat_in_epoch,
                                            just_cache, load_camera_intrinsics)
