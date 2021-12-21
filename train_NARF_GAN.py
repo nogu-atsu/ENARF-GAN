@@ -62,7 +62,7 @@ def create_dataloader(config_dataset):
 
 
 def prepare_models(gen_config, dis_config, pose_dataset, size):
-    gen = NeRFNRGenerator(gen_config, size, pose_dataset.cp.intrinsics, num_bone=pose_dataset.num_bone,
+    gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                           num_bone_param=pose_dataset.num_bone_param)
     dis = Discriminator(dis_config, size=size)
     return gen, dis
@@ -137,18 +137,20 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             dis.train()
 
             real_img = img["img"].cuda(non_blocking=True).float()
+            bone_mask = pose["bone_mask"].cuda(non_blocking=True)
+            pose_to_camera = pose["pose_to_camera"].cuda(non_blocking=True)
+            bone_length = pose["bone_length"].cuda(non_blocking=True)
+            pose_to_world = pose["pose_to_world"].cuda(non_blocking=True)
+            intrinsic = pose["intrinsics"].cuda(non_blocking=True)
+            inv_intrinsic = torch.inverse(intrinsic)
 
-            (bone_disparity, bone_mask, part_disparity, pose_to_camera,
-             keypoint, bone_length, pose_to_world) = [_.cuda(non_blocking=True) for _ in pose]
-
-            if real_img.shape[0] != batchsize or bone_disparity.shape[0] != batchsize:  # drop last minibatch
-
+            if real_img.shape[0] != batchsize or bone_mask.shape[0] != batchsize:  # drop last minibatch
                 continue
 
             # randomly sample latent
             z = torch.cuda.FloatTensor(batchsize, config.generator_params.z_dim * 4).normal_()
 
-            fake_img, fake_low_res_mask = gen(pose_to_camera, pose_to_world, bone_length, z)
+            fake_img, fake_low_res_mask = gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic)
 
             loss_bone = bone_loss_func(fake_low_res_mask, bone_mask) * config.loss.bone_guided_coef
 
