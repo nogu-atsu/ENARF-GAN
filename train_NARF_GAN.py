@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from dataset import THUmanDataset, THUmanPoseDataset
+from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from NARF.utils import record_setting, yaml_config, write
 from NARF.visualization_utils import save_img
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
@@ -40,6 +40,15 @@ def create_dataset(config_dataset, just_cache=False):
         print("pose prior:", pose_prior_root)
         pose_dataset = THUmanPoseDataset(size=size, data_root=pose_prior_root,
                                          just_cache=just_cache)
+    elif dataset_name == "human_v2":
+        img_dataset = HumanDataset(train_dataset_config, size=size, return_bone_params=False,
+                                   just_cache=just_cache)
+
+        pose_prior_root = train_dataset_config.pose_prior_root or train_dataset_config.data_root
+        print("pose prior:", pose_prior_root)
+        pose_dataset = HumanPoseDataset(size=size, data_root=pose_prior_root,
+                                        just_cache=just_cache)
+
     else:
         assert False
     return img_dataset, pose_dataset

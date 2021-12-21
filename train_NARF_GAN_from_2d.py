@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from NARF.utils import record_setting, yaml_config, write
 from NARF.visualization_utils import save_img
-from dataset import THUmanDataset
+from dataset import THUmanDataset, HumanDataset
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
 from models.net import NeRFNRGenerator, Encoder, PoseDiscriminator
 from models.stylegan import Discriminator
@@ -41,6 +41,10 @@ def create_dataset(config_dataset, just_cache=False):
         img_dataset = THUmanDataset(train_dataset_config, size=size, just_cache=just_cache)
         test_img_dataset = THUmanDataset(test_dataset_config, size=size, just_cache=just_cache,
                                          num_repeat_in_epoch=1)
+    elif dataset_name == "human_v2":
+        img_dataset = HumanDataset(train_dataset_config, size=size, just_cache=just_cache)
+        test_img_dataset = HumanDataset(test_dataset_config, size=size, just_cache=just_cache,
+                                        num_repeat_in_epoch=1)
     else:
         assert False
     return img_dataset, test_img_dataset
