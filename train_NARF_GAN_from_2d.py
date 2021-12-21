@@ -71,7 +71,7 @@ def prepare_models(enc_config, gen_config, dis_config, img_dataset, size):
     return enc, gen, dis, pdis
 
 
-def evaluate(enc, test_loader):
+def evaluate(enc: Encoder, test_loader):
     print("validation")
     enc.eval()
     # loss_rotation = 0
