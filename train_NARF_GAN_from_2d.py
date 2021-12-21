@@ -143,8 +143,9 @@ def train_step(enc, gen, dis, pdis, real_img, pose_2d, intrinsic, adv_loss_type,
                                                                         torch.tensor(True))
     bone_mask_rotated = create_bone_mask(img_dataset.parents, pose_3d_rotated, size, intrinsic[:, None])
 
-    loss_bone = (bone_loss_func(fake_low_res_mask, bone_mask) +
-                 bone_loss_func(fake_low_res_mask_rotated, bone_mask_rotated))
+    background_ratio = gen.background_ratio
+    loss_bone = (bone_loss_func(fake_low_res_mask, bone_mask, background_ratio) +
+                 bone_loss_func(fake_low_res_mask_rotated, bone_mask_rotated, background_ratio))
     loss_dict["loss_bone"] = loss_bone.item()
 
     # regularize distance

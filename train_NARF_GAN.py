@@ -152,7 +152,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
             fake_img, fake_low_res_mask = gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic)
 
-            loss_bone = bone_loss_func(fake_low_res_mask, bone_mask) * config.loss.bone_guided_coef
+            background_ratio = gen.background_ratio
+            loss_bone = bone_loss_func(fake_low_res_mask, bone_mask, background_ratio) * config.loss.bone_guided_coef
 
             dis_fake = dis(fake_img, ddp, world_size)
             gen_optimizer.zero_grad()
