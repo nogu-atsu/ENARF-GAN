@@ -20,9 +20,9 @@ from utils.rotation_utils import rotate_pose_randomly
 from utils.evaluation_utils import pampjpe
 
 
-def train(train_func, config):
+def train(train_func, config, disable_checkpoint):
     datasets, data_loaders = create_dataloader(config.dataset)
-    train_func(config, datasets, data_loaders, rank=0, ddp=False)
+    train_func(config, datasets, data_loaders, disable_checkpoint, rank=0, ddp=False)
 
 
 def cache_dataset(config_dataset):
@@ -103,7 +103,7 @@ def evaluate(enc: Encoder, test_loader):
 
 def train_step(enc, gen, dis, pdis, real_img, pose_2d, intrinsic, adv_loss_type,
                enc_optimizer, gen_optimizer, dis_optimizer,
-               pdis_optimizer, img_dataset, size, bone_loss_func, ddp, world_size):
+               pdis_optimizer, img_dataset, size, bone_loss_func, disable_checkpoint, ddp, world_size):
     enc_optimizer.zero_grad()
     gen_optimizer.zero_grad()
     dis_optimizer.zero_grad()
@@ -116,8 +116,11 @@ def train_step(enc, gen, dis, pdis, real_img, pose_2d, intrinsic, adv_loss_type,
                                              intrinsic)  # (B, n_parts, 4, 4), (B, z_dim*4), (B, n_parts)
     inv_intrinsic = torch.inverse(intrinsic)
 
-    fake_img, fake_low_res_mask = torch.utils.checkpoint.checkpoint(gen, pose_3d, None,
-                                                                    bone_length, z, inv_intrinsic)
+    if disable_checkpoint:
+        fake_img, fake_low_res_mask = gen(pose_3d, None, bone_length, z, inv_intrinsic)
+    else:
+        fake_img, fake_low_res_mask = torch.utils.checkpoint.checkpoint(gen, pose_3d, None,
+                                                                        bone_length, z, inv_intrinsic)
 
     mse = nn.MSELoss()
     loss_recon = mse(real_img, fake_img)
@@ -129,10 +132,15 @@ def train_step(enc, gen, dis, pdis, real_img, pose_2d, intrinsic, adv_loss_type,
     pose_3d_rotated = rotate_pose_randomly(pose_3d)
     fake_pose2d = torch.matmul(intrinsic[:, None], pose_3d_rotated[:, :, :3, 3:])
     fake_pose2d = fake_pose2d[:, :, :2, 0] / fake_pose2d[:, :, 2:, 0]
-    (fake_img_rotated, fake_low_res_mask_rotated,
-     fine_points, fine_density) = torch.utils.checkpoint.checkpoint(gen, pose_3d_rotated,
-                                                                    None, bone_length, z, inv_intrinsic,
-                                                                    torch.tensor(True))
+    if disable_checkpoint:
+        (fake_img_rotated, fake_low_res_mask_rotated,
+         fine_points, fine_density) = gen(pose_3d_rotated, None, bone_length, z,
+                                          inv_intrinsic, torch.tensor(True))
+    else:
+        (fake_img_rotated, fake_low_res_mask_rotated,
+         fine_points, fine_density) = torch.utils.checkpoint.checkpoint(gen, pose_3d_rotated,
+                                                                        None, bone_length, z, inv_intrinsic,
+                                                                        torch.tensor(True))
     bone_mask_rotated = create_bone_mask(img_dataset.parents, pose_3d_rotated, size, intrinsic[:, None])
 
     loss_bone = (bone_loss_func(fake_low_res_mask, bone_mask) +
@@ -210,7 +218,7 @@ def r1_regularization_step(real_img, pose_2d, dis, pdis, dis_optimizer, pdis_opt
     return r1_loss.item()
 
 
-def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
+def train_func(config, datasets, data_loaders, disable_checkpoint, rank, ddp=False, world_size=1):
     torch.backends.cudnn.benchmark = True
 
     out_dir = config.out_root
@@ -301,8 +309,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
              bone_mask, bone_mask_rotated) = train_step(enc, gen, dis, pdis, real_img, pose_2d, intrinsic,
                                                         adv_loss_type,
                                                         enc_optimizer, gen_optimizer, dis_optimizer,
-                                                        pdis_optimizer, img_dataset, size, bone_loss_func, ddp,
-                                                        world_size)
+                                                        pdis_optimizer, img_dataset, size, bone_loss_func,
+                                                        disable_checkpoint, ddp, world_size)
             if rank == 0:
                 if iter % 100 == 0:
                     print(iter)
@@ -364,9 +372,10 @@ if __name__ == "__main__":
     parser.add_argument('--default_config', type=str, default="configs/NARF_GAN_from_2d/default.yml")
     parser.add_argument('--resume_latest', action="store_true")
     parser.add_argument('--num_workers', type=int, default=1)
+    parser.add_argument('--disable_checkpoint', action="store_true")
 
     args = parser.parse_args()
 
     config = yaml_config(args.config, args.default_config, args.resume_latest, args.num_workers)
 
-    train(train_func, config)
+    train(train_func, config, args.disable_checkpoint)
