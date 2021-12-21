@@ -3,6 +3,7 @@ import os
 import pickle
 import random
 
+import blosc
 import cv2
 import numpy as np
 import torch
@@ -50,22 +51,7 @@ class HumanDatasetBase(Dataset):
         return length[:, None]
 
     def preprocess_img(self, img, bg=None):
-        # bgra -> rgb, a
-        mask = img[3:] / 255.
-        img = img[:3]
-
-        # blacken background
-        img = img * mask
-        if hasattr(self, "background_imgs"):
-            if bg is None:
-                bg_idx = random.randint(0, len(self.background_imgs) - 1)
-                bg = self.background_imgs[bg_idx]
-            img = img + bg[::-1] * (1 - mask)
-
-        img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
-        img = img[::-1].copy()  # BGR2RGB
-        # mask = mask.astype("float32")  # 1 x 128 x 128
-        return img, bg
+        raise NotImplementedError()
 
     def random_sample(self):
         i = random.randint(0, len(self.imgs) - 1)
@@ -74,12 +60,15 @@ class HumanDatasetBase(Dataset):
     def get_intrinsic(self, i):
         raise NotImplementedError()
 
+    def get_image(self, i):
+        raise NotImplementedError()
+
     def __getitem__(self, i):
         i = i % len(self.imgs)
 
-        img = self.imgs[i]
+        img = self.get_image(i)
 
-        img, background = self.preprocess_img(img)
+        img = self.preprocess_img(img)
         return_dict = {"img": img, "idx": self.data_idx[i]}
 
         if self.return_bone_params:
@@ -212,6 +201,27 @@ class THUmanDataset(HumanDatasetBase):
     def get_intrinsic(self, i):
         return self.intrinsics
 
+    def get_image(self, i):
+        return self.imgs[i]
+
+    def preprocess_img(self, img, bg=None):
+        # bgra -> rgb, a
+        mask = img[3:] / 255.
+        img = img[:3]
+
+        # blacken background
+        img = img * mask
+        if hasattr(self, "background_imgs"):
+            if bg is None:
+                bg_idx = random.randint(0, len(self.background_imgs) - 1)
+                bg = self.background_imgs[bg_idx]
+            img = img + bg[::-1] * (1 - mask)
+
+        img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
+        img = img[::-1].copy()  # BGR2RGB
+        # mask = mask.astype("float32")  # 1 x 128 x 128
+        return img
+
 
 class HumanDataset(HumanDatasetBase):
     """Common human dataset class"""
@@ -236,6 +246,7 @@ class HumanDataset(HumanDatasetBase):
             data_dict = pickle.load(f)
 
         self.imgs = data_dict["img"]
+        assert blosc.unpack_array(self.imgs[0]).shape[-1] == self.size
         if self.return_bone_params:
             camera_intrinsic = data_dict["camera_intrinsic"] if self.load_camera_intrinsics else None
             camera_rotation = data_dict["camera_rotation"]
@@ -245,13 +256,20 @@ class HumanDataset(HumanDatasetBase):
             self.intrinsics = camera_intrinsic
             self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
             self.pose_to_world = smpl_pose
-            extrinsic = np.broadcast_to(np.eye(4), (len(self.imgs), 4, 4))
+            extrinsic = np.broadcast_to(np.eye(4), (len(self.imgs), 4, 4)).copy()
             extrinsic[:, :3, :3] = camera_rotation
             extrinsic[:, :3, 3:] = camera_translation
             self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
 
     def get_intrinsic(self, i):
-        raise self.intrinsics[i]
+        return self.intrinsics[i]
+
+    def get_image(self, i):
+        return blosc.unpack_array(self.imgs[i])
+
+    def preprocess_img(self, img):
+        img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
+        return img
 
 
 class THUmanPoseDataset(Dataset):
@@ -597,3 +615,84 @@ class THUmanPoseDataset(Dataset):
         batch = zip(*batch)
         batch = (torch.tensor(np.stack(b)) for b in batch)
         return batch
+
+
+class HumanPoseDataset(THUmanPoseDataset):
+    def __init__(self, size=128, data_root="", just_cache=False, num_repeat_in_epoch=100):
+        self.size = size
+        self.data_root = data_root
+        self.just_cache = just_cache
+        self.num_repeat_in_epoch = num_repeat_in_epoch
+
+        self.cp = CameraProjection(size=size)  # just holds camera intrinsics
+        self.hpp = THUmanPrior()
+
+        # todo remove this
+        self.intrinsics = self.cp.intrinsics
+
+        self.create_cache()
+
+        self.num_bone = 24
+        self.num_bone_param = self.num_bone - 1
+        self.num_valid_keypoints = self.hpp.num_valid_keypoints
+
+        self.parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9,
+                                 12, 13, 14, 16, 17, 18, 19, 20, 21])
+        self.deterministic = False
+
+    def __len__(self):
+        return len(self.pose_to_world) * self.num_repeat_in_epoch
+
+    def create_cache(self):
+        cache_path = f"{self.data_root}/cache.pickle"
+        assert os.path.exists(cache_path)
+        with open(cache_path, "rb") as f:
+            data_dict = pickle.load(f)
+
+        camera_intrinsic = data_dict["camera_intrinsic"]
+        camera_rotation = data_dict["camera_rotation"]
+        camera_translation = data_dict["camera_translation"]
+        smpl_pose = data_dict["smpl_pose"]
+
+        self.intrinsics = camera_intrinsic
+        self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
+        self.pose_to_world = smpl_pose
+        extrinsic = np.broadcast_to(np.eye(4), (len(self.intrinsics), 4, 4)).copy()
+        extrinsic[:, :3, :3] = camera_rotation
+        extrinsic[:, :3, 3:] = camera_translation
+        self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
+
+    def scale_pose(self, pose, scale):
+        pose[:, :3, 3] *= scale
+        return pose
+
+    def get_intrinsic(self, i):
+        return self.intrinsics[i]
+
+    def __getitem__(self, i):
+        i = i % len(self.pose_to_world)
+        joint_mat_world = self.pose_to_world[i]  # 24 x 4 x 4
+        joint_mat_camera = self.pose_to_camera[i]
+
+        bone_length = self.get_bone_length(joint_mat_world)
+
+        intrinsics = self.get_intrinsic(i)
+
+        joint_pos_image = self.cp.pose_to_image_coord(joint_mat_camera, intrinsics)
+
+        # this is necessary for creating mask
+        joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera[None], joint_pos_image)
+
+        disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_, joint_pos_image_,
+                                                                          self.size)
+        return_dict = {
+            # "disparity": disparity,  # size x size
+            "bone_mask": mask,  # size x size
+            # "part_disparity":part_bone_disparity,  # num_joint x size x size
+            "pose_to_camera": joint_mat_camera.astype("float32"),  # num_joint x 4 x 4
+            # "keypoint": keypoint_mask,  # num_joint x size x size
+            "bone_length": bone_length.astype("float32"),  # num_bone x 1
+            "pose_to_world": joint_mat_world[0].astype("float32"),  # num_joint x 4 x 4
+            "intrinsics": intrinsics.astype("float32"),  # (3, 3)
+        }
+        return return_dict
