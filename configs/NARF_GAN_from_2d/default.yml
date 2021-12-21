@@ -38,6 +38,7 @@ generator_params:
   z_dim: 256
   patch_size: 24
   cnn_based: False
+  background_ratio: 0.3
 #  z_bg_dim: 0
 #  use_nerf: True
   nerf_params:

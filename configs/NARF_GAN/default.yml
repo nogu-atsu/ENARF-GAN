@@ -24,6 +24,7 @@ generator_params:
   patch_size: 24
   z_bg_dim: 0
   use_nerf: True
+  background_ratio: 0.3
   nerf_params:
     hidden_size: 32  # hidden size of NeRF
     out_dim: 256  # output channel of NeRF
