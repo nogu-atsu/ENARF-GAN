@@ -100,7 +100,7 @@ def create_dict(video, frame, camera, all_intrinsic, all_rot, all_trans, smpl, s
     data_dict["camera_translation"] = all_trans[camera]
 
     data_dict["camera_id"] = np.arange(len(frame)) // set_size
-    data_dict["smpl_pose"] = smpl
+    data_dict["smpl_pose"] = smpl[frame]
     return data_dict
 
 
@@ -108,7 +108,7 @@ def save_cache(person_ids: List[int]) -> None:
     for person_id in person_ids:
         # read frame
         all_video, frame_id, camera_id, video_len = read_frames(person_id, save_size, crop_size, all_camera_id)
-        all_smpl_param = read_smpl_parameters(person_id, video_len)
+        all_smpl_param = read_smpl_parameters(person_id, video_len * thin_out_rate)
         all_intrinsic = read_intrinsic(person_id, save_scale)
         all_rot, all_trans = read_extrinsic(person_id)
 
