@@ -210,7 +210,10 @@ class Encoder(nn.Module):
         inv_intrinsic = torch.inverse(intrinsic)[:, None]
         batchsize = img.shape[0]
         feature_size = self.image_size // 16
-        image_feature = self.image_encoder(img)
+
+        # resnet
+        img = (img * 0.5 + 0.5 - self.resnet_mean) / self.resnet_std
+        image_feature = self.image_encoder(img)  # (B, 512)
 
         # z
         h = self.conv_z(image_feature)  # (B, ?, 8, 8)
