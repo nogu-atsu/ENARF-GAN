@@ -23,7 +23,7 @@ def preprocess_imgs(img, intrinsic, rot, trans, pose):
     return img, intri
 
 
-def read_frames(person_id, save_size, crop_size, chosen_camera_id, all_intrinsic, all_rot, all_trans, all_smpl_param):
+def read_frames(person_id, chosen_camera_id, all_intrinsic, all_rot, all_trans, all_smpl_param):
     all_video = []
     all_processed_intrinsic = []
     camera_id = []
@@ -136,7 +136,7 @@ def save_cache(person_ids: List[int]) -> None:
         all_rot, all_trans = read_extrinsic(person_id)
 
         # read frame
-        all_video, frame_id, camera_id, video_len, all_intrinsic = read_frames(person_id, save_size, crop_size,
+        all_video, frame_id, camera_id, video_len, all_intrinsic = read_frames(person_id,
                                                                                all_camera_id, all_intrinsic,
                                                                                all_rot, all_trans, all_smpl_param)
 
@@ -172,10 +172,11 @@ def preprocess():
 
 
 if __name__ == "__main__":
-    save_scale = 4
+    mode = "resize"  # resize, align_crop
     crop_size = 1024
     num_camera = 23
-    save_size = crop_size // save_scale
+    save_size = 256
+    save_scale = crop_size / save_size
     thin_out_rate = 5
     sampling_rate = 100 // thin_out_rate
 
@@ -185,11 +186,6 @@ if __name__ == "__main__":
     pose_loader = PoseLoader(SMPL_MODEL_PATH)
     smpllayer = SMPLlayer(SMPL_MODEL_PATH + "/smplx", model_type='smplx', use_joints=False)
 
-    joints_to_use = np.array([
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-        11, 12, 13, 14, 15, 16, 17, 18, 19,
-        20, 21, 22, 37
-    ])
     all_camera_id = np.arange(1, num_camera + 1)
 
     train_person_ids = [363, 364, 365, 366, 367, 368, 369, 370, 371, 377, 378, 379, 380, 381, 382, 383]
