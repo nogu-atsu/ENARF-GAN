@@ -64,6 +64,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         self.size = size
         self.num_bone = num_bone
         self.ray_sampler = whole_image_grid_ray_sampler
+        self.background_ratio = config.background_ratio
 
         z_dim = config.z_dim
         hidden_size = config.nerf_params.hidden_size
