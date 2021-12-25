@@ -135,6 +135,9 @@ class Encoder(nn.Module):
         resnet = torchvision.models.resnet18(pretrained=True)
         # remove MaxPool, AvgPool, and linear
         self.image_encoder = nn.Sequential(*[l for l in resnet.children() if not isinstance(l, nn.MaxPool2d)][:-2])
+        self.register_buffer('resnet_mean', torch.tensor([0.485, 0.456, 0.406]))
+        self.register_buffer('resnet_std', torch.tensor([0.229, 0.224, 0.225]))
+
         self.image_feat_dim = config.image_feat_dim
         self.image_size = config.image_size
         self.z_dim = config.z_dim
