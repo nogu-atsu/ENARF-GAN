@@ -15,10 +15,11 @@ from utils.rotation_utils import rotation_6d_to_matrix
 
 class NeuralRenderer(nn.Module):
     def __init__(self, in_channel, style_dim, channel_multiplier: int = 32, input_size: int = 32,
-                 num_upsample: int = 2, blur_kernel: list = [1, 3, 3, 1]):
+                 num_upsample: int = 2, blur_kernel: list = [1, 3, 3, 1], bg_activation=None):
         super(NeuralRenderer, self).__init__()
-
+        assert bg_activation in ["tanh", "l2", None]
         size = input_size
+        self.in_channel = in_channel
 
         _channel = channel_multiplier * 2 ** num_upsample
 
@@ -37,10 +38,18 @@ class NeuralRenderer(nn.Module):
         self.layers = nn.ModuleList(layers)
         self.conv = ModulatedConv2d(_channel, 4, 1, style_dim, demodulate=False)
         self.bias = nn.Parameter(torch.zeros(1, 4, 1, 1))
+        self.bg_activation = bg_activation
 
     def forward(self, fg_feat: torch.tensor, mask: torch.tensor, bg_feat: torch.tensor, z: torch.tensor
                 ) -> torch.tensor:
+        if self.bg_activation == "tanh":
+            bg_feat = torch.tanh(bg_feat)
+        elif self.bg_activation == "l2":
+            bg_feat = F.normalize(bg_feat, dim=1)
         h = fg_feat + (1 - mask[:, None]) * bg_feat
+
+        if self.bg_activation == "l2":
+            h = h * self.in_channel ** 0.5
         for l in self.layers:
             h = l(h, z)
         h = self.conv(h, z) + self.bias
@@ -60,6 +69,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         hidden_size = config.nerf_params.hidden_size
         nerf_out_dim = config.nerf_params.out_dim
         patch_size = config.patch_size
+        bg_activation = config.bg_activation
 
         self.nerf = NeRF(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
                          parent=parent_id, num_bone_param=num_bone_param)
@@ -67,7 +77,8 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
                                                       n_mlp=4, last_channel=nerf_out_dim)
 
         self.neural_renderer = NeuralRenderer(nerf_out_dim, hidden_size,
-                                              num_upsample=int(math.log2(self.size // patch_size)))
+                                              num_upsample=int(math.log2(self.size // patch_size)),
+                                              bg_activation=bg_activation)
 
     def normalized_inv_intrinsics(self, intrinsics: torch.tensor):
         normalized_intrinsics = torch.cat([intrinsics[:2] / self.size, intrinsics.new([[0, 0, 1]])], dim=0)
