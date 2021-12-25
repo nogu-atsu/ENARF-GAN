@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 from typing import List
+import glob
 
 import blosc
 import cv2
@@ -13,7 +14,7 @@ from tqdm import tqdm
 from read_smpl import PoseLoader
 
 
-def read_frames(person_id, save_size, crop_size, chosen_camera_id):
+def read_frames(person_id, save_size, crop_size, chosen_camera_id, all_intrinsic):
     all_video = []
     for cam in tqdm(chosen_camera_id):
         video_path = f"{ZJU_PATH}/{person_id}/videos/{cam:0>2}.mp4"
@@ -44,7 +45,9 @@ def read_frames(person_id, save_size, crop_size, chosen_camera_id):
 
     camera_id = [np.ones(video_len // thin_out_rate, dtype="int") * (cam - 1) for cam in chosen_camera_id]
     camera_id = np.concatenate(camera_id, axis=0)
-    return all_video, frame_id, camera_id, video_len // thin_out_rate
+
+    all_intrinsic[:, :2] /= save_scale
+    return all_video, frame_id, camera_id, video_len // thin_out_rate, all_intrinsic
 
 
 def read_intrinsic(person_id, save_scale):
@@ -55,7 +58,6 @@ def read_intrinsic(person_id, save_scale):
         matrix = np.array(matrix).reshape(3, 3)
         all_intrinsic.append(matrix)
     all_intrinsic = np.array(all_intrinsic)
-    all_intrinsic[:, :2] /= save_scale
     return all_intrinsic
 
 
@@ -75,11 +77,10 @@ def read_extrinsic(person_id):
     return all_rot, all_trans
 
 
-def read_smpl_parameters(person_id, video_len):
+def read_smpl_parameters(person_id):
     all_smpl_param = []
-    for frame_id in tqdm(range(video_len)):
-        smpl_path = f"{ZJU_PATH}/{person_id}/smplx/{frame_id:0>6}.json"
-
+    smpl_paths = sorted(glob.glob(f"{ZJU_PATH}/{person_id}/smplx/*.json"))
+    for smpl_path in smpl_paths:
         with open(smpl_path, "r") as f:
             smpl_param = json.load(f)[0]
 
@@ -106,11 +107,14 @@ def create_dict(video, frame, camera, all_intrinsic, all_rot, all_trans, smpl, s
 
 def save_cache(person_ids: List[int]) -> None:
     for person_id in person_ids:
-        # read frame
-        all_video, frame_id, camera_id, video_len = read_frames(person_id, save_size, crop_size, all_camera_id)
-        all_smpl_param = read_smpl_parameters(person_id, video_len * thin_out_rate)
+        # read data other than imgs
+        all_smpl_param = read_smpl_parameters(person_id)
         all_intrinsic = read_intrinsic(person_id, save_scale)
         all_rot, all_trans = read_extrinsic(person_id)
+
+        # read frame
+        all_video, frame_id, camera_id, video_len, all_intrinsic = read_frames(person_id, save_size, crop_size,
+                                                                               all_camera_id, all_intrinsic)
 
         train_dict = create_dict(all_video, frame_id, camera_id, all_intrinsic,
                                  all_rot, all_trans, all_smpl_param, video_len)
