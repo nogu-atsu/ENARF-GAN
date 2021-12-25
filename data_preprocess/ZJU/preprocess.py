@@ -14,43 +14,66 @@ from tqdm import tqdm
 from read_smpl import PoseLoader
 
 
-def read_frames(person_id, save_size, crop_size, chosen_camera_id, all_intrinsic):
+def preprocess_imgs(img, intrinsic, rot, trans, pose):
+    img = img[:crop_size, :crop_size]
+    img = cv2.resize(img, (save_size, save_size), interpolation=cv2.INTER_CUBIC)
+    img = img[:, :, ::-1]
+    intri = intrinsic.copy()
+    intri[:2] /= save_scale
+    return img, intri
+
+
+def read_frames(person_id, save_size, crop_size, chosen_camera_id, all_intrinsic, all_rot, all_trans, all_smpl_param):
     all_video = []
+    all_processed_intrinsic = []
+    camera_id = []
     for cam in tqdm(chosen_camera_id):
         video_path = f"{ZJU_PATH}/{person_id}/videos/{cam:0>2}.mp4"
         video = cv2.VideoCapture(video_path)
         frames = []
+        processed_intrinsic = []
+        frame_id = 0
         while True:
             ret, frame = video.read()
             if not ret:
                 break
-            frame = frame[:crop_size, :crop_size]
-            frame = cv2.resize(frame, (save_size, save_size), interpolation=cv2.INTER_CUBIC)
-            frames.append(frame[:, :, ::-1])
+
+            # preprocess images
+            frame, intri = preprocess_imgs(frame, all_intrinsic[cam - 1], all_rot[cam - 1], all_trans[cam - 1],
+                                           all_smpl_param[frame_id])
+
+            frames.append(frame)
+            processed_intrinsic.append(intri)
+            frame_id += 1
         frames = np.array(frames)
         all_video.append(frames)
+
+        processed_intrinsic = np.array(processed_intrinsic)
+        all_processed_intrinsic.append(processed_intrinsic)
+
+        camera_id.append(np.ones(len(frames), dtype="int") * (cam - 1))
     video_len = np.array([video.shape[0] for video in all_video])
     assert (video_len == video_len[0]).all()
     video_len = video_len[0]
     frame_id = [np.arange(video_len) for _ in range(num_camera)]
-    # thin out
-    all_video = [video[i % thin_out_rate:video_len // thin_out_rate * thin_out_rate:thin_out_rate] for i, video in
-                 enumerate(all_video)]
-    frame_id = [frame[i % thin_out_rate:video_len // thin_out_rate * thin_out_rate:thin_out_rate] for i, frame in
-                enumerate(frame_id)]
 
-    frame_id = np.concatenate(frame_id, axis=0)
-    all_video = np.concatenate(all_video, axis=0)
+    # thin out
+    def thin_out_and_cat(arrays):
+        arrays = [arr[i % thin_out_rate:video_len // thin_out_rate * thin_out_rate:thin_out_rate] for i, arr in
+                  enumerate(arrays)]
+        return np.concatenate(arrays, axis=0)
+
+    all_video = thin_out_and_cat(all_video)
+    frame_id = thin_out_and_cat(frame_id)
+    camera_id = thin_out_and_cat(camera_id)
+    all_processed_intrinsic = thin_out_and_cat(all_processed_intrinsic)
+
     assert all_video.shape[0] == video_len // thin_out_rate * num_camera
 
-    camera_id = [np.ones(video_len // thin_out_rate, dtype="int") * (cam - 1) for cam in chosen_camera_id]
-    camera_id = np.concatenate(camera_id, axis=0)
-
-    all_intrinsic[:, :2] /= save_scale
-    return all_video, frame_id, camera_id, video_len // thin_out_rate, all_intrinsic
+    return all_video, frame_id, camera_id, video_len // thin_out_rate, all_processed_intrinsic
 
 
-def read_intrinsic(person_id, save_scale):
+def read_intrinsic(person_id):
     fs = cv2.FileStorage(f"{ZJU_PATH}/{person_id}/intri.yml", cv2.FILE_STORAGE_READ)
     all_intrinsic = []
     for cam in range(1, num_camera + 1):
@@ -96,7 +119,7 @@ def create_dict(video, frame, camera, all_intrinsic, all_rot, all_trans, smpl, s
     data_dict["img"] = np.array([blosc.pack_array(frame.transpose(2, 0, 1)) for frame in tqdm(video)],
                                 dtype="object")
 
-    data_dict["camera_intrinsic"] = all_intrinsic[camera]
+    data_dict["camera_intrinsic"] = all_intrinsic
     data_dict["camera_rotation"] = all_rot[camera]
     data_dict["camera_translation"] = all_trans[camera]
 
@@ -109,12 +132,13 @@ def save_cache(person_ids: List[int]) -> None:
     for person_id in person_ids:
         # read data other than imgs
         all_smpl_param = read_smpl_parameters(person_id)
-        all_intrinsic = read_intrinsic(person_id, save_scale)
+        all_intrinsic = read_intrinsic(person_id)
         all_rot, all_trans = read_extrinsic(person_id)
 
         # read frame
         all_video, frame_id, camera_id, video_len, all_intrinsic = read_frames(person_id, save_size, crop_size,
-                                                                               all_camera_id, all_intrinsic)
+                                                                               all_camera_id, all_intrinsic,
+                                                                               all_rot, all_trans, all_smpl_param)
 
         train_dict = create_dict(all_video, frame_id, camera_id, all_intrinsic,
                                  all_rot, all_trans, all_smpl_param, video_len)
