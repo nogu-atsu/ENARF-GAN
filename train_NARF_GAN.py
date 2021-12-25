@@ -171,9 +171,10 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             loss_gen = loss_adv_gen + loss_bone
 
             if rank == 0:
-                print(iter)
-                write(iter, loss_adv_gen, "adv_loss_gen", writer)
-                write(iter, loss_bone, "bone_loss", writer)
+                if iter % 100 == 0:
+                    print(iter)
+                    write(iter, loss_adv_gen, "adv_loss_gen", writer)
+                    write(iter, loss_bone, "bone_loss", writer)
 
             if iter + 1 > config.start_gen_training:
                 loss_gen.backward()
@@ -189,7 +190,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
             loss_dis = adv_loss_dis(dis_real, dis_fake, adv_loss_type)
             if rank == 0:
-                write(iter, loss_dis, "adv_loss_dis", writer)
+                if iter % 100 == 0:
+                    write(iter, loss_dis, "adv_loss_dis", writer)
 
             gen_optimizer.zero_grad()
             dis_optimizer.zero_grad()
