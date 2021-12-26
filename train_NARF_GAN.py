@@ -200,8 +200,13 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
             if iter % 16 == 0:
                 real_img.requires_grad = True
-                dis_real = dis(real_img, ddp, world_size)
-                r1_loss = d_r1_loss(dis_real, real_img)
+
+                # mix_ratio = torch.rand(real_img.shape[0], device=real_img.device)[:, None, None, None]
+                # mixed_img = real_img * mix_ratio + fake_img.detach() * (1 - mix_ratio)
+                mixed_img = real_img
+
+                dis_real = dis(mixed_img, ddp, world_size)
+                r1_loss = d_r1_loss(dis_real, mixed_img)
                 if rank == 0:
                     write(iter, r1_loss, "r1_reg", writer)
 
