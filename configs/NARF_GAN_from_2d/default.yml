@@ -43,6 +43,7 @@ generator_params:
 #  use_nerf: True
   bg_activation:
   nerf_params:
+    final_activation: tanh
     hidden_size: 32  # hidden size of NeRF
     out_dim: 256  # output channel of NeRF
     Nc: 48  # number of points for coarse sampling
