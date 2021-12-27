@@ -228,7 +228,7 @@ class Encoder(nn.Module):
         feature_size = self.image_size // 16
 
         # resnet
-        img = (img * 0.5 + 0.5 - self.resnet_mean) / self.resnet_std
+        img = (img * 0.5 + 0.5 - self.resnet_mean[:, None, None]) / self.resnet_std[:, None, None]
         image_feature = self.image_encoder(img)  # (B, 512)
 
         # z
