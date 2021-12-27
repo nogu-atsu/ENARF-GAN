@@ -15,6 +15,7 @@ dataset:
     n_mesh: 3545
     n_rendered_per_mesh: 10
     n_imgs_per_mesh: 8
+    focal_length:
   test:
     random_background: True
     data_root: path_to_your_dataset_root  # <- need change
@@ -23,6 +24,7 @@ dataset:
     n_mesh: 3545
     n_rendered_per_mesh: 10
     n_imgs_per_mesh: 2
+    focal_length:
 
 encoder_params:
   image_feat_dim: 512

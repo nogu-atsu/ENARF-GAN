@@ -232,6 +232,7 @@ class HumanDataset(HumanDatasetBase):
         super(HumanDataset, self).__init__(config, size, return_bone_params, return_bone_mask, num_repeat_in_epoch,
                                            just_cache, load_camera_intrinsics)
 
+        self.focal_length = config.focal_length if hasattr(config, "focal_length") else None
         # common operations
         self.load_cache()
         if just_cache:
@@ -262,7 +263,13 @@ class HumanDataset(HumanDatasetBase):
             self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
 
     def get_intrinsic(self, i):
-        return self.intrinsics[i]
+        if self.focal_length is None:
+            return self.intrinsics[i]
+        else:
+            intrinsic = np.array([[self.focal_length, 0, self.size / 2],
+                                  [0, self.focal_length, self.size / 2],
+                                  [0, 0, 1]], dtype="float32")
+            return intrinsic
 
     def get_image(self, i):
         return blosc.unpack_array(self.imgs[i])
@@ -395,7 +402,8 @@ class THUmanPoseDataset(Dataset):
         return pose
 
     def get_intrinsic(self, i):
-        return self.intrinsics
+        if self.focal_length is None:
+            return self.intrinsics
 
     def __getitem__(self, i):
         i = i % len(self.poses)
