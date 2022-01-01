@@ -37,10 +37,16 @@ def create_dataset(config_dataset, just_cache=False):
                                     just_cache=just_cache)
 
         pose_prior_root = train_dataset_config.pose_prior_root or train_dataset_config.data_root
+        pose_prior_root2 = train_dataset_config.pose_prior_root2  # default is None
+        pose1_ratio = train_dataset_config.pose1_ratio  # default is 1
+        pose2_ratio = train_dataset_config.pose2_ratio  # default is 0
+
         print("pose prior:", pose_prior_root)
         pose_dataset = THUmanPoseDataset(size=size, data_root=pose_prior_root,
-                                         just_cache=just_cache)
+                                         just_cache=just_cache, data_root2=pose_prior_root2,
+                                         data1_ratio=pose1_ratio, data2_ratio=pose2_ratio)
     elif dataset_name == "human_v2":
+        # TODO mixed prior
         img_dataset = HumanDataset(train_dataset_config, size=size, return_bone_params=False,
                                    just_cache=just_cache)
 
