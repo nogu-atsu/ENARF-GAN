@@ -26,6 +26,7 @@ generator_params:
   use_nerf: True
   background_ratio: 0.3
   bg_activation:
+  crop_background: False
   nerf_params:
     final_activation: tanh
     hidden_size: 32  # hidden size of NeRF

@@ -495,13 +495,15 @@ class Generator(nn.Module):
             channel_multiplier=2,
             blur_kernel=[1, 3, 3, 1],
             lr_mlp=0.01,
-            last_channel=3
+            last_channel=3,
+            crop_background=False,
     ):
         super().__init__()
 
         self.size = size
 
         self.style_dim = style_dim
+        self.crop_background = crop_background
 
         layers = [PixelNorm()]
 
@@ -526,7 +528,8 @@ class Generator(nn.Module):
             1024: 16 * channel_multiplier,
         }
 
-        self.input = ConstantInput(self.channels[4])
+        size2 = 8 if crop_background else 4
+        self.input = ConstantInput(self.channels[4], size2=size2)
         self.conv1 = StyledConv(
             self.channels[4], self.channels[4], 3, style_dim, blur_kernel=blur_kernel
         )
@@ -661,6 +664,10 @@ class Generator(nn.Module):
             i += 2
 
         image = skip
+
+        if self.crop_background:
+            crop_loc = np.random.randint(0, self.size, image.shape[0])
+            image = torch.stack([im[:, :, cl:cl + self.size] for im, cl in zip(image, crop_loc)])
 
         if return_latents:
             return image, latent
