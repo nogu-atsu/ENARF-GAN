@@ -280,13 +280,34 @@ class HumanDataset(HumanDatasetBase):
 
 
 class THUmanPoseDataset(Dataset):
-    def __init__(self, size=128, data_root="", just_cache=False, num_repeat_in_epoch=100):
+    def __init__(self, size=128, data_root="", just_cache=False, num_repeat_in_epoch=100,
+                 data_root2=None, data1_ratio=1, data2_ratio=0):
+        """pose prior
+
+        Args:
+            size:
+            data_root:
+            just_cache:
+            num_repeat_in_epoch:
+            data_root2: if not None, mixed distribution of data1 and data2 is returned
+            data1_ratio: mixing ratio
+            data2_ratio: mixing ratio
+        """
         self.size = size
         self.data_root = data_root
+        self.data_root2 = data_root2
+        self.data1_ratio = data1_ratio
+        self.data2_ratio = data2_ratio
+
         self.just_cache = just_cache
         self.num_repeat_in_epoch = num_repeat_in_epoch
 
-        self.poses = self.create_cache()
+        assert data_root2 is not None or data2_ratio == 0
+        assert data1_ratio + data2_ratio == 1.
+        self.poses = self.create_cache(data_root)
+        self.poses2 = self.create_cache(data_root2)
+        assert self.poses2 is None or len(self.poses) >= len(
+            self.poses2), "second pose prior should be larger than first prior"
 
         self.cp = CameraProjection(size=size)  # just holds camera intrinsics
         self.hpp = THUmanPrior()
@@ -303,22 +324,24 @@ class THUmanPoseDataset(Dataset):
     def __len__(self):
         return len(self.poses) * self.num_repeat_in_epoch
 
-    def create_cache(self):
-        if os.path.exists(f"{self.data_root}/bone_params_128.npy"):
+    def create_cache(self, data_root):
+        if data_root is None:
+            return None
+        if os.path.exists(f"{data_root}/bone_params_128.npy"):
             if self.just_cache:
                 return None
 
-            poses = np.load(f"{self.data_root}/bone_params_128.npy")
+            poses = np.load(f"{data_root}/bone_params_128.npy")
 
         else:
             poses = []
-            pose_paths = glob.glob(f"{self.data_root}/render_128/bone_params/*.npy")
+            pose_paths = glob.glob(f"{data_root}/render_128/bone_params/*.npy")
             for path in pose_paths:
                 poses.append(np.load(path))
 
             poses = np.array(poses)
 
-            np.save(f"{self.data_root}/bone_params_128.npy", poses)
+            np.save(f"{data_root}/bone_params_128.npy", poses)
 
         return poses
 
@@ -406,8 +429,15 @@ class THUmanPoseDataset(Dataset):
             return self.intrinsics
 
     def __getitem__(self, i):
-        i = i % len(self.poses)
-        joint_mat_world = self.poses[i]  # 24 x 4 x 4
+        if self.data1_ratio == 1.0:
+            poses = self.poses
+        else:
+            # choose pose
+            u = random.random()
+            poses = self.poses if u < self.data1_ratio else self.poses2
+
+        i = i % len(poses)
+        joint_mat_world = poses[i]  # 24 x 4 x 4
         joint_mat_world = self.preprocess(joint_mat_world)
 
         joint_mat_world = self.transform_randomly(joint_mat_world)
