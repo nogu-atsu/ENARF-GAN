@@ -10,7 +10,8 @@ from torch import nn
 from NARF.models.model_utils import whole_image_grid_ray_sampler
 from NARF.models.net import NeRF
 from models.stylegan import Generator as StyleGANGenerator
-from models.stylegan import StyledConv, ModulatedConv2d
+from models.stylegan import StyledConv, ModulatedConv2d, Blur
+from models.nerf_model import StyleNeRF
 from utils.rotation_utils import rotation_6d_to_matrix
 
 
