@@ -425,8 +425,7 @@ class THUmanPoseDataset(Dataset):
         return pose
 
     def get_intrinsic(self, i):
-        if self.focal_length is None:
-            return self.intrinsics
+        return self.intrinsics
 
     def __getitem__(self, i):
         if self.data1_ratio == 1.0:
