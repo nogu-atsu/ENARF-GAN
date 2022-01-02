@@ -8,9 +8,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from NARF.utils import record_setting, yaml_config, write
 from NARF.visualization_utils import save_img
+from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
 from models.net import NeRFNRGenerator
 from models.stylegan import Discriminator
@@ -141,13 +141,13 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             gen_optimizer.load_state_dict(snapshot["gen_opt"])
             dis_optimizer.load_state_dict(snapshot["dis_opt"])
             iter = snapshot["iteration"]
-            start_time = snapshot["start_time"]
+            # start_time = snapshot["start_time"]
             del snapshot
-
+    init_iter = iter
     while iter < num_iter:
         for i, (img, pose) in enumerate(zip(loader_img, loader_pose)):
             if (iter + 1) % 10 == 0 and rank == 0:
-                print(f"{iter + 1} iter, {(time.time() - start_time) / iter} s/iter")
+                print(f"{iter + 1} iter, {(time.time() - start_time) / (iter - init_iter + 1)} s/iter")
             gen.train()
             dis.train()
 
