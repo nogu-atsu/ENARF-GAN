@@ -745,9 +745,11 @@ class Generator(nn.Module):
         image = skip
 
         if self.crop_background:
-            crop_loc = np.random.randint(0, self.size, image.shape[0])
-            image = torch.stack([im[:, :, cl:cl + self.size] for im, cl in zip(image, crop_loc)])
-
+            if self.training:
+                crop_loc = np.random.randint(0, self.size, image.shape[0])
+                image = torch.stack([im[:, :, cl:cl + self.size] for im, cl in zip(image, crop_loc)])
+            else:
+                image = image[:, :, :, self.size // 2: self.size * 3 // 2]
         if return_latents:
             return image, latent
 

@@ -147,12 +147,14 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         bg_activation = config.bg_activation
         use_style_nerf = config.use_style_nerf
         use_style_nerf_renderer = config.use_style_nerf_renderer
+        crop_background = config.crop_background
 
         nerf_model = StyleNeRF if use_style_nerf else NeRF
         self.nerf = nerf_model(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
                                parent=parent_id, num_bone_param=num_bone_param)
         self.background_generator = StyleGANGenerator(size=patch_size, style_dim=z_dim,
-                                                      n_mlp=4, last_channel=nerf_out_dim)
+                                                      n_mlp=4, last_channel=nerf_out_dim,
+                                                      crop_background=crop_background)
 
         renderer = StyleNeRFRenderer if use_style_nerf_renderer else NeuralRenderer
         self.neural_renderer = renderer(nerf_out_dim, hidden_size,
