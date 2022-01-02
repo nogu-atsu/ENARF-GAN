@@ -2,6 +2,7 @@
 import math
 import random
 
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -265,7 +266,7 @@ class EqualLinear(nn.Module):
         return f
 
     def forward(self, input):
-        if self.activation:
+        if self.activation is not None:
             out = F.linear(input, self.weight * self.scale)
             assert self.bias is not None
             bias = self.bias * self.lr_mul
@@ -396,25 +397,89 @@ class ModulatedConv2d(nn.Module):
         return out
 
 
+class ModulatedConv1d(nn.Module):
+    def __init__(
+            self,
+            in_channel,
+            out_channel,
+            kernel_size,
+            style_dim,
+            groups=1,
+            demodulate=True,
+    ):
+        super().__init__()
+
+        self.eps = 1e-8
+        self.kernel_size = kernel_size
+        self.in_channel = in_channel
+        self.out_channel = out_channel
+        self.groups = groups
+
+        fan_in = in_channel * kernel_size ** 2
+        self.scale = 1 / math.sqrt(fan_in)
+        self.padding = kernel_size // 2
+
+        self.weight = nn.Parameter(
+            torch.randn(1, out_channel, in_channel // groups, kernel_size)
+        )
+
+        self.modulation = EqualLinear(style_dim, in_channel, bias_init=1)
+
+        self.demodulate = demodulate
+
+    def __repr__(self):
+        return (
+            f'{self.__class__.__name__}({self.in_channel}, {self.out_channel}, {self.kernel_size}, '
+            f'upsample={self.upsample}, downsample={self.downsample})'
+        )
+
+    def forward(self, input: torch.Tensor, style: torch.Tensor):
+        batch, in_channel, height = input.shape
+
+        style = self.modulation(style).view(batch, self.groups, in_channel // self.groups, 1)
+        if self.groups > 1:
+            style = torch.repeat_interleave(style, self.out_channel // self.groups, dim=1)
+        weight = self.scale * self.weight * style
+
+        if self.demodulate:
+            # demod = torch.rsqrt(weight.pow(2).sum([2, 3]) + 1e-8)
+            # weight = weight * demod.view(batch, self.out_channel, 1, 1)
+
+            weight = weight.view(batch, self.out_channel, -1)
+            weight = F.normalize(weight, dim=-1)
+
+        weight = weight.view(
+            batch * self.out_channel, in_channel // self.groups, self.kernel_size
+        )
+
+        input = input.view(1, batch * in_channel, height)
+        out = F.conv1d(input, weight, padding=self.padding, groups=batch * self.groups)
+        _, _, height = out.shape
+        out = out.view(batch, self.out_channel, height)
+
+        return out
+
+
 class NoiseInjection(nn.Module):
     def __init__(self):
         super().__init__()
 
         self.weight = nn.Parameter(torch.zeros(1))
 
-    def forward(self, image, noise=None):
+    def forward(self, image, noise: Optional[torch.Tensor] = None):
         if noise is None:
-            batch, _, height, width = image.shape
-            noise = image.new_empty(batch, 1, height, width).normal_()
+            # batch, _, height, width = image.shape
+            # noise = image.new_empty(batch, 1, height, width).normal_()
+            noise = torch.empty_like(image[:, :1]).normal_()
 
         return image + self.weight * noise
 
 
 class ConstantInput(nn.Module):
-    def __init__(self, channel, size=4):
+    def __init__(self, channel, size=4, size2=4):
         super().__init__()
 
-        self.input = nn.Parameter(torch.randn(1, channel, size, size))
+        self.input = nn.Parameter(torch.randn(1, channel, size, size2))
 
     def forward(self, input):
         batch = input.shape[0]
@@ -434,31 +499,44 @@ class StyledConv(nn.Module):
             blur_kernel=[1, 3, 3, 1],
             demodulate=True,
             use_noise=True,
+            conv_1d=False,
+            groups=1,
     ):
         super().__init__()
         self.use_noise = use_noise
 
-        self.conv = ModulatedConv2d(
-            in_channel,
-            out_channel,
-            kernel_size,
-            style_dim,
-            upsample=upsample,
-            blur_kernel=blur_kernel,
-            demodulate=demodulate,
-        )
-
+        if conv_1d:
+            self.conv = ModulatedConv1d(
+                in_channel,
+                out_channel,
+                kernel_size,
+                style_dim,
+                groups=groups,
+                demodulate=demodulate,
+            )
+            self.bias = nn.Parameter(torch.zeros(1, out_channel, 1))
+        else:
+            self.conv = ModulatedConv2d(
+                in_channel,
+                out_channel,
+                kernel_size,
+                style_dim,
+                upsample=upsample,
+                blur_kernel=blur_kernel,
+                demodulate=demodulate,
+            )
+            self.bias = nn.Parameter(torch.zeros(1, out_channel, 1, 1))
         self.noise = NoiseInjection()
-        # self.bias = nn.Parameter(torch.zeros(1, out_channel, 1, 1))
         # self.activate = ScaledLeakyReLU(0.2)
-        self.activate = FusedLeakyReLU(out_channel)
+        # self.activate = FusedLeakyReLU(out_channel)
+        self.activate = nn.LeakyReLU(0.2, inplace=True)
 
-    def forward(self, input, style, noise=None):
+    def forward(self, input, style, noise: Optional[torch.Tensor] = None):
         out = self.conv(input, style)
         if self.use_noise:
             out = self.noise(out, noise=noise)
-        # out = out + self.bias
-        out = self.activate(out)
+        out = out + self.bias
+        out = self.activate(out) * 2 ** 0.5
 
         return out
 

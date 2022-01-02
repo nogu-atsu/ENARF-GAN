@@ -29,6 +29,8 @@ generator_params:
   use_nerf: True
   background_ratio: 0.3
   bg_activation:
+  use_style_nerf: False
+  use_style_nerf_renderer: False
   crop_background: False
   nerf_params:
     final_activation: tanh
@@ -66,6 +68,7 @@ generator_params:
     # siren model
     film_w: 1
     groupconv_first: False
+    group_conv_first: False
 
 discriminator_params:
   minibatch_std: True
