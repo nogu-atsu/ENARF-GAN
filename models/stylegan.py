@@ -1,6 +1,7 @@
 # modified from https://github.com/rosinality/stylegan2-pytorch/blob/master/model.py
 import math
 import random
+from typing import Optional
 
 import numpy as np
 import torch
