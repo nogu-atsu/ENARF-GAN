@@ -52,7 +52,7 @@ generator_params:
     density_scale: 1
     detach_alpha: False
     se3: False
-    max_chunk_size: 16384
+    max_chunk_size: 100000000
     # concat model
     mask_input: False
     mask_bone_length: False
