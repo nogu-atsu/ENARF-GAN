@@ -37,8 +37,8 @@ def preprocess_imgs(img, intrinsic, rot, trans, pose):
         x2 = math.floor(spine[0]) + _crop_size // 2
         y1 = math.floor(spine[1]) - _crop_size // 2
         y2 = math.floor(spine[1]) + _crop_size // 2
-        img = np.pad(img, ((max(0, -x1), max(0, x2 - img_size)),
-                           (max(0, -y1), max(0, y2 - img_size)),
+        img = np.pad(img, ((max(0, -y1), max(0, y2 - img_size)),
+                           (max(0, -x1), max(0, x2 - img_size)),
                            (0, 0)), mode="reflect")
         img = img[max(0, y1):max(0, y1) + _crop_size, max(0, x1):max(0, x1) + _crop_size]
         img = cv2.resize(img, (save_size, save_size), interpolation=cv2.INTER_CUBIC)
