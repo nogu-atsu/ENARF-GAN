@@ -729,7 +729,7 @@ class HumanPoseDataset(THUmanPoseDataset):
             "pose_to_camera": joint_mat_camera.astype("float32"),  # num_joint x 4 x 4
             # "keypoint": keypoint_mask,  # num_joint x size x size
             "bone_length": bone_length.astype("float32"),  # num_bone x 1
-            "pose_to_world": joint_mat_world[0].astype("float32"),  # num_joint x 4 x 4
+            "pose_to_world": joint_mat_world.astype("float32"),  # num_joint x 4 x 4
             "intrinsics": intrinsics.astype("float32"),  # (3, 3)
         }
         return return_dict
