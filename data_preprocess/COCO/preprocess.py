@@ -132,4 +132,4 @@ print(count)
 cropped_imgs = np.array(cropped_img_list, dtype="object")
 
 with open("/data/unagi0/noguchi/dataset/COCO/crop128/cache.pickle", "wb") as f:
-    pickle.dump(cropped_imgs, f)
+    pickle.dump({"img": cropped_imgs}, f)
