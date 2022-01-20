@@ -148,6 +148,10 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             else:
                 gen_module = gen
                 dis_module = dis
+            for k in list(snapshot["gen"].keys()):
+                if "activate.bias" in k:
+                    snapshot["gen"][k[:-13] + "bias"] = snapshot["gen"][k].reshape(1, -1, 1, 1)
+                    del snapshot["gen"][k]
             gen_module.load_state_dict(snapshot["gen"], strict=True)
             dis_module.load_state_dict(snapshot["dis"])
             gen_optimizer.load_state_dict(snapshot["gen_opt"])
