@@ -52,3 +52,27 @@ def nerf_patch_loss(fake_mask, bone_mask, background_ratio=0.3, coef=10):
     loss = push_to_background(fake_mask, background_ratio=background_ratio) + \
            nerf_bone_loss(fake_mask, bone_mask)
     return loss * coef
+
+
+def loss_dist_func(weights, fine_depth):
+    """loss proposed by mip-NeRF 360
+
+    Args:
+        weights: B x 1 x 1 x n x Np
+        fine_depth: B x 1 x 1 x n x Np + 1
+
+    Returns:
+
+    """
+    Np = weights.shape[-1]
+    weights = weights.reshape(-1, Np)
+    fine_depth = fine_depth.reshape(-1, Np + 1)
+    interval = fine_depth[:, 1:] - fine_depth[:, :-1]
+    center = (fine_depth[:, 1:] + fine_depth[:, :-1]) / 2
+
+    loss = torch.mean(
+        weights[:, :, None] * weights[:, None, :] * torch.abs(center[:, :, None] - center[:, None, :])
+    ) * Np ** 2
+
+    loss += torch.mean(weights ** 2 * interval) * (Np / 3)
+    return loss

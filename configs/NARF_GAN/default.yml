@@ -86,6 +86,7 @@ loss:
   ignore_boundary: False
   suppress_small: False
   r1_loss_coef: 0.01
+  surface_reg_coef: 0
 
 consistency_regularization: False
 replace: True

@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from NARF.utils import record_setting, yaml_config, write
 from NARF.visualization_utils import save_img
 from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
-from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
+from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss, loss_dist_func
 from models.net import NeRFNRGenerator
 from models.stylegan import Discriminator
 
@@ -165,7 +165,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             # randomly sample latent
             z = torch.cuda.FloatTensor(batchsize, config.generator_params.z_dim * 4).normal_()
 
-            fake_img, fake_low_res_mask = gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic)
+            fake_img, fake_low_res_mask, fine_weights, fine_depth = gen(pose_to_camera, pose_to_world,
+                                                                        bone_length, z, inv_intrinsic)
 
             background_ratio = gen.background_ratio
             loss_bone = bone_loss_func(fake_low_res_mask, bone_mask, background_ratio) * config.loss.bone_guided_coef
@@ -176,11 +177,17 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             loss_adv_gen = adv_loss_gen(dis_fake, adv_loss_type, tmp=1)
             loss_gen = loss_adv_gen + loss_bone
 
+            if config.loss.surface_reg_coef > 0:
+                loss_dist = loss_dist_func(fine_weights, fine_depth)
+                loss_gen += loss_dist * config.loss.surface_reg_coef
+
             if rank == 0:
                 if iter % 100 == 0:
                     print(iter)
                     write(iter, loss_adv_gen, "adv_loss_gen", writer)
                     write(iter, loss_bone, "bone_loss", writer)
+                    if config.loss.surface_reg_coef > 0:
+                        write(iter, loss_dist, "loss_dist", writer)
 
             if iter + 1 > config.start_gen_training:
                 loss_gen.backward()

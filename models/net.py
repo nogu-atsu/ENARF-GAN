@@ -207,6 +207,9 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
                                 render_scale=nerf_scale)
 
         low_res_feature, low_res_mask = nerf_output[:2]
+        fine_weights = self.nerf.buffers_tensors["fine_weights"]
+        fine_depth = self.nerf.buffers_tensors["fine_depth"]
+
         low_res_feature = low_res_feature.reshape(batchsize, self.nerf.out_dim, patch_size, patch_size)
         low_res_mask = low_res_mask.reshape(batchsize, patch_size, patch_size)
 
@@ -219,7 +222,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
             fine_points, fine_density = nerf_output[-1]
             return rendered_color, low_res_mask, fine_points, fine_density
 
-        return rendered_color, low_res_mask
+        return rendered_color, low_res_mask, fine_weights, fine_depth
 
 
 class Encoder(nn.Module):
