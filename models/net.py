@@ -175,7 +175,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         return self.nerf.flops
 
     def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
-                return_intermediate=False):
+                return_intermediate=False, nerf_scale=1):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -203,7 +203,8 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
                                 pose_to_world, bone_length, thres=0.0,
                                 Nc=self.config.nerf_params.Nc,
                                 Nf=self.config.nerf_params.Nf,
-                                return_intermediate=return_intermediate)
+                                return_intermediate=return_intermediate,
+                                render_scale=nerf_scale)
 
         low_res_feature, low_res_mask = nerf_output[:2]
         low_res_feature = low_res_feature.reshape(batchsize, self.nerf.out_dim, patch_size, patch_size)

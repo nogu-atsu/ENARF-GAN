@@ -69,6 +69,8 @@ generator_params:
     film_w: 1
     groupconv_first: False
     group_conv_first: False
+    mip_nerf: False
+    mip_nerf_resolution:
 
 discriminator_params:
   minibatch_std: True

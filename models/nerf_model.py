@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional
+from typing import Optional, Union, List
 
 import numpy as np
 import torch
@@ -16,7 +16,7 @@ StyledConv1d = lambda in_channel, out_channel, style_dim, groups=1: StyledConv(i
                                                                                groups=groups)
 
 
-def encode(value, num_frequency: int, num_bone: int):
+def encode(value: Union[List, torch.tensor], num_frequency: int, num_bone: int):
     """
     positional encoding for group conv
     :param value: b x -1 x n
@@ -25,13 +25,22 @@ def encode(value, num_frequency: int, num_bone: int):
     :return:
     """
     # with autocast(enabled=False):
-    b, _, n = value.shape
-    values = [2 ** i * value.reshape(b, num_bone, -1, n) * np.pi for i in range(num_frequency)]
+    if isinstance(value, list):
+        val, diag_sigma = value
+    else:
+        val = value
+        diag_sigma = None
+    b, _, n = val.shape
+    values = [2 ** i * val.reshape(b, num_bone, -1, n) * np.pi for i in range(num_frequency)]
     values = torch.cat(values, dim=2)
     gamma_p = torch.cat([torch.sin(values), torch.cos(values)], dim=2)
+    if diag_sigma is not None:
+        diag_sigmas = [4 ** i * diag_sigma.reshape(b, num_bone, -1, n) * np.pi for i in range(num_frequency)] * 2
+        diag_sigmas = torch.cat(diag_sigmas, dim=2)
+        gamma_p = gamma_p * torch.exp(-diag_sigmas / 2)
     gamma_p = gamma_p.reshape(b, -1, n)
     # mask outsize [-1, 1]
-    mask = (value.reshape(b, num_bone, -1, n).abs() > 1).float().sum(dim=2, keepdim=True) >= 1
+    mask = (val.reshape(b, num_bone, -1, n).abs() > 1).float().sum(dim=2, keepdim=True) >= 1
     mask = mask.float().repeat(1, 1, gamma_p.shape[1] // num_bone, 1)
     mask = mask.reshape(gamma_p.shape)
     return gamma_p * (1 - mask)  # B x (groups * ? * L * 2) x n
@@ -68,9 +77,12 @@ class StyleNeRF(NeRF):
         self.final_activation = config.final_activation
         self.origin_location = config.origin_location if hasattr(config, "origin_location") else "root"
         self.coordinate_scale = config.coordinate_scale
+        self.mip_nerf_resolution = config.mip_nerf_resolution
+        self.mip_nerf = config.mip_nerf
         assert self.final_activation in ["tanh", "l2", None]
         assert self.origin_location in ["root", "center"]
         assert self.origin_location == "root" or parent is not None
+        assert (self.mip_nerf_resolution is not None) == self.config.mip_nerf
 
         dim = 3  # xyz
         num_mlp_layers = 3
@@ -174,8 +186,161 @@ class StyleNeRF(NeRF):
         fl += self.hidden_size * 2
         return fl
 
+    def get_mu_sigma(self, camera_origin: torch.tensor, ray_direction: torch.tensor, depth: torch.tensor,
+                     inv_intrinsics: torch.tensor):
+        """compute mu and sigma for IPE in mip-NeRF
+
+        Args:
+            camera_origin: (B, n_bone, 3, n_ray)
+            ray_direction: (B, n_bone, 3, n_ray)
+            depth: (B, 1, 1, n_ray, Np)
+
+        Returns: mu, sigma
+        """
+        t_mu = (depth[:, :, :, :, :-1] + depth[:, :, :, :, 1:]) / 2  # B x 1 x 1 x n x Nc
+        t_delta = (depth[:, :, :, :, 1:] - depth[:, :, :, :, :-1]) / 2
+
+        mu_t = t_mu + 2 * t_mu * t_delta ** 2 / (3 * t_mu ** 2 + t_delta ** 2)
+        sigma_t2 = t_delta ** 2 / 3 - 4 / 15 * t_delta ** 4 * (12 * t_mu ** 2 - t_delta ** 2) / (
+                3 * t_mu ** 2 + t_delta ** 2) ** 2
+        r_dot = 2 / 3 ** 0.5 * inv_intrinsics[:, 0, 2] / self.mip_nerf_resolution  # (B, )
+        sigma_r2 = r_dot[:, None, None, None, None] ** 2 * (
+                t_mu ** 2 / 4 + 5 / 12 * t_delta ** 2 - 4 / 15 * t_delta ** 4 / (
+                3 * t_mu ** 2 + t_delta ** 2))
+
+        mu = camera_origin.unsqueeze(4) + mu_t * ray_direction.unsqueeze(4)  # (B, n_bone, 3, n, Nc)
+        diag_sigma = (sigma_t2 * ray_direction.unsqueeze(4) ** 2 +
+                      sigma_r2 * (1 - F.normalize(ray_direction, dim=2).unsqueeze(4) ** 2))
+        return mu, diag_sigma
+
+    def coarse_to_fine_sample(self, image_coord: torch.tensor, pose_to_camera: torch.tensor,
+                              inv_intrinsics: torch.tensor, z: torch.tensor = None, world_pose: torch.tensor = None,
+                              bone_length: torch.tensor = None, near_plane: float = 0.3, far_plane: float = 5,
+                              Nc: int = 64, Nf: int = 128, render_scale: float = 1) -> (torch.tensor,) * 3:
+        batchsize, _, _, n = image_coord.shape
+        num_bone = 1 if self.config.concat_pose else self.num_bone  # PoseConditionalNeRF or other
+        with torch.no_grad():
+            (camera_origin, depth_min,
+             depth_max, ray_direction) = self.decide_frustrum_range(num_bone, image_coord, pose_to_camera,
+                                                                    world_pose, inv_intrinsics, near_plane,
+                                                                    far_plane)
+            camera_origin = camera_origin.reshape(batchsize, num_bone, 3, n)
+
+            # unit ray direction
+            unit_ray_direction = F.normalize(ray_direction, dim=1)  # B*num_bone x 3 x n
+            unit_ray_direction = unit_ray_direction.reshape(batchsize, num_bone * 3, n)
+            ray_direction = ray_direction.reshape(batchsize, num_bone, 3, n)
+
+            start = camera_origin + depth_min * ray_direction  # B x num_bone x 3 x n
+            end = camera_origin + depth_max * ray_direction  # B x num_bone x 3 x n
+            if self.mip_nerf:
+                # coarse ray sampling
+                bins = torch.linspace(0, 1, Nc + 1, dtype=torch.float, device="cuda").reshape(1, 1, 1, 1, Nc + 1)
+                coarse_depth = (depth_min.unsqueeze(4) * (1 - bins) +
+                                depth_max.unsqueeze(4) * bins)  # B x 1 x 1 x n x (Nc + 1)
+
+                coarse_points, coarse_diag_sigma = self.get_mu_sigma(camera_origin, ray_direction, coarse_depth,
+                                                                     inv_intrinsics)
+
+                coarse_points = coarse_points.reshape(batchsize, num_bone * 3, -1)
+                coarse_diag_sigma = coarse_diag_sigma.reshape(batchsize, num_bone * 3, -1)
+                coarse_points = [coarse_points, coarse_diag_sigma]
+                # coarse density
+                coarse_density = self.calc_color_and_density(coarse_points, z, world_pose, bone_length,
+                                                             unit_ray_direction, )[0]  # B x groups x n*Nc
+            else:
+                # coarse ray sampling
+                bins = torch.arange(Nc, dtype=torch.float, device="cuda").reshape(1, 1, 1, 1, Nc) / Nc
+                coarse_points = start.unsqueeze(4) * (1 - bins) + end.unsqueeze(4) * bins  # B x num_bone x 3 x n x Nc
+                coarse_depth = (depth_min.unsqueeze(4) * (1 - bins) +
+                                depth_max.unsqueeze(4) * bins)  # B x 1 x 1 x n x Nc
+
+                # coarse density
+                coarse_density = self.calc_color_and_density(coarse_points.reshape(batchsize, num_bone * 3, n * Nc),
+                                                             z, world_pose,
+                                                             bone_length,
+                                                             unit_ray_direction)[0]  # B x groups x n*Nc
+
+            if self.groups > 1:
+                # alpha blending
+                coarse_density, _ = self.sum_density(coarse_density)
+
+            Np = coarse_depth.shape[-1]  # Nc or Nc + 1
+            # calculate weight for fine sampling
+            coarse_density = coarse_density.reshape(batchsize, 1, 1, n, Nc)[:, :, :, :, :Np - 1]
+            # # delta = distance between adjacent samples
+            delta = coarse_depth[:, :, :, :, 1:] - coarse_depth[:, :, :, :, :-1]  # B x 1 x 1 x n x Np - 1
+
+            density_delta = coarse_density * delta * render_scale
+            T_i = torch.exp(-(torch.cumsum(density_delta, dim=4) - density_delta))
+            weights = T_i * (1 - torch.exp(-density_delta))  # B x 1 x 1 x n x Np-1
+            weights = weights.reshape(batchsize * n, Np - 1)
+            # fine ray sampling
+            if self.mip_nerf:
+                weights = F.pad(weights, (1, 1, 0, 0))
+                weights = (torch.maximum(weights[:, :-2], weights[:, 1:-1]) +
+                           torch.maximum(weights[:, 1:-1], weights[:, 2:])) / 2 + 0.01
+                bins = (torch.multinomial(weights,
+                                          Nf + 1, replacement=True).reshape(batchsize, 1, 1, n, Nf + 1).float() / Nc +
+                        torch.cuda.FloatTensor(batchsize, 1, 1, n, Nf + 1).uniform_() / Nc)
+            else:
+                bins = (torch.multinomial(torch.clamp_min(weights, 1e-8),
+                                          Nf, replacement=True).reshape(batchsize, 1, 1, n, Nf).float() / Nc -
+                        torch.cuda.FloatTensor(batchsize, 1, 1, n, Nf).uniform_() / Nc)
+            bins = torch.sort(bins, dim=-1)[0]
+            fine_depth = (depth_min.unsqueeze(4) * (1 - bins) +
+                          depth_max.unsqueeze(4) * bins)  # B x 1 x 1 x n x (Nf or Nf + 1)
+
+            # sort points
+            if self.mip_nerf:
+                fine_points, fine_diag_sigma = self.get_mu_sigma(camera_origin, ray_direction, fine_depth,
+                                                                 inv_intrinsics)
+                fine_points = fine_points.reshape(batchsize, num_bone * 3, -1)
+                fine_diag_sigma = fine_diag_sigma.reshape(batchsize, num_bone * 3, -1)
+            else:
+                fine_points = start.unsqueeze(4) * (1 - bins) + end.unsqueeze(4) * bins  # B x num_bone x 3 x n x Nf
+                fine_points = torch.cat([coarse_points, fine_points], dim=4)
+                fine_depth = torch.cat([coarse_depth, fine_depth], dim=4)
+                arg = torch.argsort(fine_depth, dim=4)
+
+                fine_points = torch.gather(fine_points, dim=4,
+                                           index=arg.repeat(1, num_bone, 3, 1, 1))  # B x num_bone x 3 x n x Nc+Nf
+                fine_depth = torch.gather(fine_depth, dim=4, index=arg)  # B x 1 x 1 x n x Nc+Nf
+
+                fine_points = fine_points.reshape(batchsize, num_bone * 3, -1)
+
+        self.temporal_state = {
+            "coarse_density": coarse_density,
+            "coarse_T_i": T_i,
+            "coarse_weights": weights,
+            "coarse_depth": coarse_depth,
+            "fine_depth": fine_depth,
+            "fine_points": fine_points,
+            "near_plane": near_plane,
+            "far_plane": far_plane
+        }
+
+        if pose_to_camera.requires_grad:
+            R = pose_to_camera[:, :, :3, :3]
+            t = pose_to_camera[:, :, :3, 3:]
+
+            with torch.no_grad():
+                fine_points = fine_points.reshape(batchsize, num_bone, 3, -1)
+                fine_points = torch.matmul(R, fine_points) + t
+            fine_points = torch.matmul(R.permute(0, 1, 3, 2), fine_points - t).reshape(batchsize, num_bone * 3, -1)
+
+        if self.mip_nerf:
+            fine_points = [fine_points, fine_diag_sigma]
+
+        return (
+            fine_depth,  # B x 1 x 1 x n x Nc+Nf
+            fine_points,  # B x num_bone*3 x n*Nc+Nf
+            unit_ray_direction  # B x num_bone*3 x n
+        )
+
     def backbone_(self, p, z=None, j=None, bone_length=None, ray_direction=None):
-        batchsize, _, n = p.shape
+        assert isinstance(p, list) == self.mip_nerf
+
         act = nn.LeakyReLU(0.2, inplace=True)
 
         def clac_p_and_length_feature(p, bone_length, z):
@@ -202,9 +367,9 @@ class StyleNeRF(NeRF):
                 # if self.save_mask:  # save mask for segmentation rendering
                 #     self.mask_prob = _mask_prob.argmax(dim=1).data.cpu().numpy()  # B x n
 
-                encoded_p = self.apply_mask(p, encoded_p, _mask_prob,
+                encoded_p = self.apply_mask(None, encoded_p, _mask_prob,
                                             self.num_frequency_for_position)  # mask position
-
+            batchsize = encoded_p.shape[0]
             encoded_p = encoded_p.reshape(batchsize, self.num_bone, 2, self.num_frequency_for_position * 3, -1)
             encoded_p = encoded_p.permute(0, 3, 1, 2, 4)
             encoded_p = encoded_p.reshape(batchsize, self.num_bone * self.num_frequency_for_position * 3 * 2, -1)
@@ -222,6 +387,7 @@ class StyleNeRF(NeRF):
         if j is not None and self.use_world_pose:
             assert False, "don't use world pose"
 
+        batchsize, _, n = net.shape
         # ray direction
         if ray_direction is not None and self.use_ray_direction:
             warnings.warn("Using ray direction will not be supported in the future.")
