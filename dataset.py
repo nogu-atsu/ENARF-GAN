@@ -12,7 +12,7 @@ from scipy.spatial.transform import Slerp
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from NARF.models.utils_3d import THUmanPrior, CameraProjection, create_mask
+from NARF.models.utils_3d import THUmanPrior, CameraProjection, create_mask, pose_to_image_coord
 
 
 class HumanDatasetBase(Dataset):
@@ -281,7 +281,7 @@ class HumanDataset(HumanDatasetBase):
 
 class THUmanPoseDataset(Dataset):
     def __init__(self, size=128, data_root="", just_cache=False, num_repeat_in_epoch=100,
-                 data_root2=None, data1_ratio=1, data2_ratio=0):
+                 data_root2=None, data1_ratio=1, data2_ratio=0, crop_algo="narf"):
         """pose prior
 
         Args:
@@ -292,12 +292,16 @@ class THUmanPoseDataset(Dataset):
             data_root2: if not None, mixed distribution of data1 and data2 is returned
             data1_ratio: mixing ratio
             data2_ratio: mixing ratio
+            crop_algo: "narf" same algo as NARF with random scaling, "tight" tight cropping without scaling
         """
         self.size = size
         self.data_root = data_root
         self.data_root2 = data_root2
         self.data1_ratio = data1_ratio
         self.data2_ratio = data2_ratio
+        self.crop_algo = crop_algo
+        assert crop_algo in ["narf", "tight"]
+        # TODO Extinguish narf algorithm
 
         self.just_cache = just_cache
         self.num_repeat_in_epoch = num_repeat_in_epoch
@@ -346,9 +350,10 @@ class THUmanPoseDataset(Dataset):
         return poses
 
     def sample_camera_mat(self, cam_t=None, theta=None, phi=None, angle=None):
+        cam_distance = 5.0 if self.crop_algo == "tight" else 2.0
         if self.deterministic:
             if cam_t is None:
-                cam_t = np.array((0, 0, 2.0))
+                cam_t = np.array((0, 0, cam_distance))
 
                 theta = 0
                 phi = 0
@@ -357,7 +362,7 @@ class THUmanPoseDataset(Dataset):
             cam_r = cam_r * angle
         else:
             if cam_t is None:
-                cam_t = np.array((0, 0, 2.0))
+                cam_t = np.array((0, 0, cam_distance))
 
                 theta = np.random.uniform(0, 0.3)
                 phi = np.random.uniform(0, 2 * np.pi)
@@ -401,16 +406,19 @@ class THUmanPoseDataset(Dataset):
 
         return pose
 
+    def rotate_pose_randomly(self, pose):  # random rotation
+        y_rot = np.random.uniform(-np.pi, np.pi)
+        x_rot = np.random.uniform(-0.3, 0.3)
+        z_rot = np.random.uniform(-0.3, 0.3)
+        # # mul(mat, mesh.v)
+        pose = self.rotate_pose_in_place(pose, x_rot, y_rot, z_rot)
+        return pose
+
     def transform_randomly(self, pose, scale=True):
         if self.deterministic:
             pose[:, :3, 3] *= 1.3
         else:
-            # random rotation
-            y_rot = np.random.uniform(-np.pi, np.pi)
-            x_rot = np.random.uniform(-0.3, 0.3)
-            z_rot = np.random.uniform(-0.3, 0.3)
-            # # mul(mat, mesh.v)
-            pose = self.rotate_pose_in_place(pose, x_rot, y_rot, z_rot)
+            pose = self.rotate_pose_randomly(pose)
 
             # random scale
             if scale:
@@ -424,8 +432,32 @@ class THUmanPoseDataset(Dataset):
         pose[:, :3, 3] *= scale
         return pose
 
-    def get_intrinsic(self, i):
-        return self.intrinsics
+    def get_intrinsic(self, i, pose_to_camera=None):
+        if self.crop_algo == "narf":
+            return self.intrinsics
+        elif self.crop_algo == "tight":
+            pose_to_camera = pose_to_camera.copy()
+            pose_to_camera[15] = pose_to_camera[15] * 2 - pose_to_camera[12]
+            joints_to_use = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+            pose_to_camera = pose_to_camera[joints_to_use, :3, 3]
+
+            projected_pose = pose_to_camera[:, :2] / pose_to_camera[:, 2:]  # projection to z=1
+            top_left = projected_pose.min(axis=0)
+            bottom_right = projected_pose.max(axis=0)
+            center = (top_left + bottom_right) / 2
+            size = (center - top_left).max() * 1.1
+            x1, y1 = center - size
+            x2, y2 = center + size
+
+            f = self.size / (x2 - x1)
+            cx = -self.size * x1 / (x2 - x1)
+            cy = -self.size * y1 / (y2 - y1)
+            intrinsics = np.array([[f, 0, cx],
+                                   [0, f, cy],
+                                   [0, 0, 1]], dtype="float32")
+            return intrinsics
+        else:
+            raise ValueError()
 
     def __getitem__(self, i):
         if self.data1_ratio == 1.0:
@@ -437,16 +469,25 @@ class THUmanPoseDataset(Dataset):
 
         i = i % len(poses)
         joint_mat_world = poses[i]  # 24 x 4 x 4
-        joint_mat_world = self.preprocess(joint_mat_world)
-
-        joint_mat_world = self.transform_randomly(joint_mat_world)
+        if self.crop_algo == "tight":
+            joint_mat_world = self.preprocess(joint_mat_world, scale=1.0)
+            joint_mat_world = self.rotate_pose_randomly(joint_mat_world)
+        elif self.crop_algo == "narf":
+            joint_mat_world = self.preprocess(joint_mat_world)
+            joint_mat_world = self.transform_randomly(joint_mat_world)
 
         camera_mat = self.sample_camera_mat()
 
         bone_length = self.get_bone_length(joint_mat_world)
 
-        intrinsics = self.get_intrinsic(i)
-        joint_mat_camera, joint_pos_image = self.cp.process_mat(joint_mat_world, camera_mat, intrinsics)
+        joint_mat_camera = np.matmul(camera_mat, joint_mat_world)
+
+        if self.crop_algo == "tight":
+            intrinsics = self.get_intrinsic(i, joint_mat_camera)
+        else:
+            intrinsics = self.get_intrinsic(i)
+        joint_pos_image = pose_to_image_coord(joint_mat_camera, intrinsics)
+        joint_mat_camera = joint_mat_camera[None]
 
         # this is necessary for creating mask
         joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
@@ -460,8 +501,9 @@ class THUmanPoseDataset(Dataset):
             "pose_to_camera": joint_mat_camera[0].astype("float32"),  # num_joint x 4 x 4
             # "keypoint": keypoint_mask,  # num_joint x size x size
             "bone_length": bone_length.astype("float32"),  # num_bone x 1
-            "pose_to_world": joint_mat_world[0].astype("float32"),  # num_joint x 4 x 4
-            "intrinsics": intrinsics.astype("float32"),  # (3, 3)
+            "pose_to_world": joint_mat_world.astype("float32"),  # num_joint x 4 x 4
+            "intrinsics": intrinsics.astype("float32"),  # (3, 3),
+            "pose_2d": joint_pos_image[0].transpose()[:, :2]  # (num_bone, 2)
         }
         return return_dict
 
