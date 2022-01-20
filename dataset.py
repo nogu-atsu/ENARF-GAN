@@ -69,6 +69,9 @@ class HumanDatasetBase(Dataset):
         img = self.get_image(i)
 
         img = self.preprocess_img(img)
+        if not self.return_bone_params:
+            if random.random() > 0.5:
+                img = img[:, :, ::-1].copy()  # flip
         return_dict = {"img": img, "idx": self.data_idx[i]}
 
         if self.return_bone_params:
