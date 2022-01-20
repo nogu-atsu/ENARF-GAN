@@ -69,6 +69,8 @@ generator_params:
     film_w: 1
     groupconv_first: False
     group_conv_first: False
+    origin_location: root  # origin of local coordinate, root or center
+    coordinate_scale: 1
     mip_nerf: False
     mip_nerf_resolution:
 
