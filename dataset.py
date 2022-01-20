@@ -493,7 +493,7 @@ class THUmanPoseDataset(Dataset):
         joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera, joint_pos_image)
 
         disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_, joint_pos_image_,
-                                                                          self.size)
+                                                                          self.size, thickness=0.5)
         return_dict = {
             # "disparity": disparity,  # size x size
             "bone_mask": mask,  # size x size
@@ -763,7 +763,7 @@ class HumanPoseDataset(THUmanPoseDataset):
         joint_mat_camera_, joint_pos_image_ = self.add_blank_part(joint_mat_camera[None], joint_pos_image)
 
         disparity, mask, part_bone_disparity, keypoint_mask = create_mask(self.hpp, joint_mat_camera_, joint_pos_image_,
-                                                                          self.size)
+                                                                          self.size, thickness=0.5)
         return_dict = {
             # "disparity": disparity,  # size x size
             "bone_mask": mask,  # size x size
