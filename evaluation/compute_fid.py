@@ -48,7 +48,7 @@ class GenIterator:
         intrinsic = minibatch["intrinsics"].cuda(non_blocking=True)
         inv_intrinsic = torch.inverse(intrinsic)
         with torch.no_grad():
-            fake_img, _ = self.gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic)
+            fake_img, _, _, _ = self.gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic)
         self.i += 1
         return torch.clamp(fake_img, -1, 1)
 
