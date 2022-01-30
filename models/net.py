@@ -11,7 +11,7 @@ from NARF.models.model_utils import whole_image_grid_ray_sampler
 from NARF.models.net import NeRF
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d, Blur
-from models.nerf_model import StyleNeRF
+from models.nerf_model import StyleNeRF, TriPlaneNeRF
 from utils.rotation_utils import rotation_6d_to_matrix
 
 
@@ -161,6 +161,11 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
                                         num_upsample=int(math.log2(self.size // patch_size)),
                                         bg_activation=bg_activation)
 
+    def register_canonical_pose(self, pose: np.ndarray):
+        assert hasattr(self, "nerf_model_type")
+        if self.nerf_model_type == "tri-plane":
+            self.nerf.register_canonical_pose(pose)
+
     def normalized_inv_intrinsics(self, intrinsics: torch.tensor):
         normalized_intrinsics = torch.cat([intrinsics[:2] / self.size, intrinsics.new([[0, 0, 1]])], dim=0)
         normalized_inv_intri = torch.linalg.inv(normalized_intrinsics)
@@ -181,10 +186,10 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         :param pose_to_camera: camera coordinate of joint
         :param pose_to_world: wold coordinate of joint
         :param bone_length:
-        :param background:
         :param z: latent vector
         :param inv_intrinsics:
         :param return_intermediate:
+        :param nerf_scale:
         :return:
         """
         assert self.num_bone == 1 or (bone_length is not None and pose_to_camera is not None)
@@ -528,3 +533,91 @@ class PoseDiscriminator(nn.Module):
         pose_2d = pose_2d.reshape(batchsize, -1)
         out = self.model(pose_2d)
         return out
+
+
+class TriNeRFGenerator(nn.Module):  # tri-plane nerf
+    def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None):
+        super(TriNeRFGenerator, self).__init__()
+        self.config = config
+        self.size = size
+        self.num_bone = num_bone
+        self.ray_sampler = whole_image_grid_ray_sampler
+        self.background_ratio = config.background_ratio
+
+        z_dim = config.z_dim
+        crop_background = config.crop_background
+
+        self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
+                                 parent=parent_id, num_bone_param=num_bone_param)
+        self.background_generator = StyleGANGenerator(size=size, style_dim=z_dim,
+                                                      n_mlp=4, last_channel=3,
+                                                      crop_background=crop_background)
+
+    def register_canonical_pose(self, pose: np.ndarray):
+        assert hasattr(self, "nerf_model_type")
+        if self.nerf_model_type == "tri-plane":
+            self.nerf.register_canonical_pose(pose)
+
+    def normalized_inv_intrinsics(self, intrinsics: torch.tensor):
+        normalized_intrinsics = torch.cat([intrinsics[:2] / self.size, intrinsics.new([[0, 0, 1]])], dim=0)
+        normalized_inv_intri = torch.linalg.inv(normalized_intrinsics)
+        return normalized_inv_intri
+
+    @property
+    def memory_cost(self):
+        return self.nerf.memory_cost
+
+    @property
+    def flops(self):
+        return self.nerf.flops
+
+    def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
+                return_intermediate=False, nerf_scale=1):
+        """
+        generate image from 3d bone mask
+        :param pose_to_camera: camera coordinate of joint
+        :param pose_to_world: wold coordinate of joint
+        :param bone_length:
+        :param z: latent vector
+        :param inv_intrinsics:
+        :param return_intermediate:
+        :param nerf_scale:
+        :return:
+        """
+        assert self.num_bone == 1 or (bone_length is not None and pose_to_camera is not None)
+        batchsize = pose_to_camera.shape[0]
+        patch_size = self.config.patch_size
+
+        grid, homo_img = self.ray_sampler(self.size, self.size, batchsize)
+
+        z_dim = z.shape[1] // 4
+        z_for_nerf, z_for_neural_render, z_for_background = torch.split(z, [z_dim * 2, z_dim, z_dim], dim=1)
+
+        # sparse rendering
+        inv_intrinsics = torch.tensor(inv_intrinsics).float().cuda(homo_img.device)
+        nerf_output = self.nerf(batchsize, homo_img,
+                                pose_to_camera, inv_intrinsics, z_for_nerf,
+                                z_for_neural_render,
+                                bone_length,
+                                Nc=self.config.nerf_params.Nc,
+                                Nf=self.config.nerf_params.Nf,
+                                return_intermediate=return_intermediate,
+                                render_scale=nerf_scale)
+
+        fg_color, fg_mask = nerf_output[:2]
+        fine_weights = self.nerf.buffers_tensors["fine_weights"]
+        fine_depth = self.nerf.buffers_tensors["fine_depth"]
+
+        fg_color = fg_color.reshape(batchsize, 3, patch_size, patch_size)
+        fg_mask = fg_mask.reshape(batchsize, 1, patch_size, patch_size)
+
+        n_latent = self.background_generator.n_latent
+        bg_color, _ = self.background_generator([z_for_background, z_for_neural_render], inject_index=n_latent - 4)
+
+        rendered_color = fg_color + (1 - fg_mask) * bg_color
+
+        if return_intermediate:
+            fine_points, fine_density = nerf_output[-1]
+            return rendered_color, fg_mask, fine_points, fine_density
+
+        return rendered_color, fg_mask, fine_weights, fine_depth
