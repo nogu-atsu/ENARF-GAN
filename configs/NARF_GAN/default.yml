@@ -31,6 +31,7 @@ generator_params:
   bg_activation:
   use_style_nerf: False
   use_style_nerf_renderer: False
+  use_triplane: False
   crop_background: False
   nerf_params:
     final_activation: tanh

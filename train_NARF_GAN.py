@@ -12,7 +12,7 @@ from NARF.utils import record_setting, yaml_config, write
 from NARF.visualization_utils import save_img
 from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss, loss_dist_func
-from models.net import NeRFNRGenerator
+from models.net import NeRFNRGenerator, TriNeRFGenerator
 from models.stylegan import Discriminator
 
 
@@ -89,8 +89,13 @@ def create_dataloader(config_dataset):
 
 
 def prepare_models(gen_config, dis_config, pose_dataset, size):
-    gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
-                          num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents)
+    if gen_config.use_triplane:
+        gen = TriNeRFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+                               num_bone_param=pose_dataset.num_bone_param,
+                               parent_id=pose_dataset.parents)
+    else:
+        gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+                              num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents)
     dis = Discriminator(dis_config, size=size)
     return gen, dis
 
