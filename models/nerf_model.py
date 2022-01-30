@@ -222,7 +222,7 @@ class StyleNeRF(NeRF):
         with torch.no_grad():
             (camera_origin, depth_min,
              depth_max, ray_direction) = self.decide_frustrum_range(num_bone, image_coord, pose_to_camera,
-                                                                    world_pose, inv_intrinsics, near_plane,
+                                                                    inv_intrinsics, near_plane,
                                                                     far_plane)
             camera_origin = camera_origin.reshape(batchsize, num_bone, 3, n)
 
