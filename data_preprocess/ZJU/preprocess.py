@@ -211,6 +211,12 @@ def merge_all_cache(person_ids, mode="train"):
             'wb') as f:
         pickle.dump(all_data_dict, f)
 
+    # save canonical pose
+    canonical = pose_loader.canonical_pose()
+    np.save(
+        f'{ZJU_PATH}/cache{save_size}_{algo}_fl{standard_focal_length}_correct_{sampling_rate}%/all_{mode}/canonical.npy',
+        canonical)
+
 
 def preprocess():
     save_cache(train_person_ids)

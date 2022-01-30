@@ -98,3 +98,33 @@ class PoseLoader:
 
         bone_pose_world = np.matmul(trans, bone_pose.numpy()[0])
         return bone_pose_world[self.joints_to_use]
+
+    def canonical_pose(self):
+        # Rh = np.zeros((1, 3))  # 1 x 3
+        # Th = np.zeros((1, 3))  # 1 x 3
+        poses = np.zeros((1, 87))  # 1 x 87
+        # shapes = np.zeros((1, 10))  # 1 x 10
+        expression = np.zeros((1, 10))  # 1 x 10
+
+        shapes = torch.zeros(1, 10).float()
+        expression = torch.zeros(1, 10).float()
+        shapes = torch.cat([shapes, expression], dim=1)
+        poses = torch.zeros(1, 87).float()
+        poses = self.body_model.extend_pose(poses)
+        v_template = self.body_model.j_v_template
+        joints, A = extract_bone(shapes, poses, v_template,
+                                 self.body_model.j_shapedirs,
+                                 self.body_model.j_J_regressor, self.body_model.parents,
+                                 pose2rot=True, dtype=self.body_model.dtype)
+
+        bone_pose = A.clone()
+        bone_pose[:, :, :3, 3] = joints
+
+        # trans = np.eye(4)
+        # trans[:3, :3] = cv2.Rodrigues(Rh[0])[0]
+        # trans[:3, 3] = Th
+
+        bone_pose_world = bone_pose.numpy()[0]
+        # move origin
+        bone_pose_world = bone_pose_world - bone_pose_world[[1, 2]].mean(axis=0)
+        return bone_pose_world[self.joints_to_use]
