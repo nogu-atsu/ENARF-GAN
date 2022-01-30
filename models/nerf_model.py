@@ -309,16 +309,16 @@ class StyleNeRF(NeRF):
 
                 fine_points = fine_points.reshape(batchsize, num_bone * 3, -1)
 
-        self.temporal_state = {
-            "coarse_density": coarse_density,
-            "coarse_T_i": T_i,
-            "coarse_weights": weights,
-            "coarse_depth": coarse_depth,
-            "fine_depth": fine_depth,
-            "fine_points": fine_points,
-            "near_plane": near_plane,
-            "far_plane": far_plane
-        }
+        # self.temporal_state = {
+        #     "coarse_density": coarse_density,
+        #     "coarse_T_i": T_i,
+        #     "coarse_weights": weights,
+        #     "coarse_depth": coarse_depth,
+        #     "fine_depth": fine_depth,
+        #     "fine_points": fine_points,
+        #     "near_plane": near_plane,
+        #     "far_plane": far_plane
+        # }
 
         if pose_to_camera.requires_grad:
             R = pose_to_camera[:, :, :3, :3]
