@@ -1,6 +1,7 @@
 import argparse
 import os
 import time
+import warnings
 
 import tensorboardX as tbx
 import torch
@@ -14,6 +15,8 @@ from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDat
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss, loss_dist_func
 from models.net import NeRFNRGenerator, TriNeRFGenerator
 from models.stylegan import Discriminator
+
+warnings.filterwarnings('ignore')
 
 
 def train(train_func, config):
@@ -93,6 +96,7 @@ def prepare_models(gen_config, dis_config, pose_dataset, size):
         gen = TriNeRFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                                num_bone_param=pose_dataset.num_bone_param,
                                parent_id=pose_dataset.parents)
+        gen.register_canonical_pose(pose_dataset.canonical_pose)
     else:
         gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                               num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents)

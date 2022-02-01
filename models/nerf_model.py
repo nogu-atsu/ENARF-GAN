@@ -421,7 +421,7 @@ class StyleNeRF(NeRF):
         feature = net + net_d
         feature = act(feature)
         if self.final_activation == "tanh":
-            feature = F.tanh(feature)
+            feature = torch.tanh(feature)
         elif self.final_activation == "l2":
             feature = F.normalize(feature, dim=2)
         return density, feature
@@ -514,9 +514,9 @@ class TriPlaneNeRF(StyleNeRF):
         length = np.linalg.norm(coordinate[1:] - coordinate[self.parent_id[1:]], axis=1)  # (23, )
 
         # move origins to parts' center (self.origin_location == "center)
-        pose = torch.cat([pose[1:, :, :3],
-                          (pose[1:, :, 3:] +
-                           pose[self.parent_id[1:], :, 3:]) / 2], dim=-1)  # (23, 4, 4)
+        pose = np.concatenate([pose[1:, :, :3],
+                               (pose[1:, :, 3:] +
+                                pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
 
         self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
@@ -535,7 +535,7 @@ class TriPlaneNeRF(StyleNeRF):
         features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
         position_2d = position[:, [0, 1, 1, 2, 2, 0]].reshape(batchsize * 3, 2, n)
         position_2d = position_2d.permute(0, 2, 1)[:, :, None]
-        feature = F.grid_sample(features, position_2d)
+        feature = F.grid_sample(features, position_2d, align_corners=False)
         feature = feature.reshape(batchsize, 3, -1, n)
         feature = feature.sum(dim=1)  # (B, feat_dim, n)
         return feature
@@ -555,9 +555,9 @@ class TriPlaneNeRF(StyleNeRF):
         features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
         position_2d = position[:, :, [0, 1, 1, 2, 2, 0]].reshape(batchsize, n_bone, 3, 2, n)
         position_2d = position_2d.permute(0, 2, 1, 4, 3).reshape(batchsize * 3, n_bone, n, 2)
-        feature = F.grid_sample(features, position_2d)  # , mode="nearest")
+        feature = F.grid_sample(features, position_2d, align_corners=False)  # , mode="nearest")
         feature = feature.reshape(batchsize, 3, -1, n_bone, n)
-        if padding_value is not 0:
+        if padding_value != 0:
             # if all elements of feature is 0, fill padding value
             feature = feature.masked_fill(feature.square().sum(dim=2, keepdim=True) < 1e5, padding_value)
         feature = feature.sum(dim=1)  # (B, feat_dim, n_bone, n)
@@ -575,7 +575,7 @@ class TriPlaneNeRF(StyleNeRF):
                                z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str):
         """
         forward func of ImplicitField
-        :param local_pos: local coordinate, (B, n_bone, 3, n) (n = num_of_ray * points_on_ray)
+        :param local_pos: local coordinate, (B * n_bone, 3, n) (n = num_of_ray * points_on_ray)
         :param canonical_pos: canonical coordinate, (B, n_bone, 3, n) (n = num_of_ray * points_on_ray)
         :param z: b x dim
         :param z_rend: b x groups x 4 x 4
@@ -590,6 +590,16 @@ class TriPlaneNeRF(StyleNeRF):
         return density, color  # B x groups x 1 x n, B x groups x 3 x n
 
     def to_local_and_canonical(self, points, pose_to_camera, bone_length):
+        """transform points to local and canonical coordinate
+
+        Args:
+            points:
+            pose_to_camera:
+            bone_length: (B, n_bone, 1)
+
+        Returns:
+
+        """
         # to local coordinate
         R = pose_to_camera[:, :, :3, :3]  # (B, n_bone, 3, 3)
         inv_R = R.permute(0, 1, 3, 2)
@@ -597,12 +607,15 @@ class TriPlaneNeRF(StyleNeRF):
         local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n*Nc)
 
         # to canonical coordinate
-        canonical_scale = (bone_length / self.canonical_bone_length / self.coordinate_scale)[None, :, None, None]
+        canonical_scale = (bone_length / self.canonical_bone_length[:, None] / self.coordinate_scale)[:, :, :, None]
         canonical_points = local_points * canonical_scale
         canonical_R = self.canonical_pose[:, :3, :3]  # (n_bone, 3, 3)
         canonical_t = self.canonical_pose[:, :3, 3:]  # (n_bone, 3, 1)
         canonical_points = torch.matmul(canonical_R, canonical_points) + canonical_t
 
+        # reshape local
+        bs, n_bone, _, n = local_points.shape
+        local_points = local_points.reshape(bs, n_bone * 3, n)
         return local_points, canonical_points
 
     def coarse_to_fine_sample(self, image_coord: torch.tensor, pose_to_camera: torch.tensor,
@@ -638,13 +651,13 @@ class TriPlaneNeRF(StyleNeRF):
 
             Np = coarse_depth.shape[-1]  # Nc or Nc + 1
             # calculate weight for fine sampling
-            coarse_density = coarse_density.reshape(batchsize, 1, 1, n, Nc)[:, :, :, :, :Np - 1]
+            coarse_density = coarse_density.reshape(batchsize, 1, n, Nc)[:, :, :, :Np - 1]
             # # delta = distance between adjacent samples
-            delta = coarse_depth[:, :, :, :, 1:] - coarse_depth[:, :, :, :, :-1]  # B x 1 x 1 x n x Np - 1
+            delta = coarse_depth[:, :, :, 1:] - coarse_depth[:, :, :, :-1]  # B x 1 x n x Np - 1
 
             density_delta = coarse_density * delta * render_scale
-            T_i = torch.exp(-(torch.cumsum(density_delta, dim=4) - density_delta))
-            weights = T_i * (1 - torch.exp(-density_delta))  # B x 1 x 1 x n x Np-1
+            T_i = torch.exp(-(torch.cumsum(density_delta, dim=3) - density_delta))
+            weights = T_i * (1 - torch.exp(-density_delta))  # B x 1 x n x Np-1
             weights = weights.reshape(batchsize * n, Np - 1)
 
             # fine ray sampling
@@ -705,7 +718,7 @@ class TriPlaneNeRF(StyleNeRF):
         # canonical coordinateに変換
         # -generate tri-plane feature conditioned on z and bone_length
         encoded_length = encode(bone_length, self.num_frequency_for_other, num_bone=self.num_bone_param)
-        tri_plane_feature = self.gen(z, encoded_length[:, :, 0])  # (B, (32 + n_bone) * 3, h, w)
+        tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0])  # (B, (32 + n_bone) * 3, h, w)
 
         # forward steps
         # mask valueを取得，weight計算
@@ -730,6 +743,9 @@ class TriPlaneNeRF(StyleNeRF):
         else:
             raise ValueError()
         color, density = color_density[:, :3], color_density[:, 3:]
+
+        density = self.density_activation(density)
+        color = torch.tanh(color)
         return density, color
 
     def render(self, image_coord: torch.tensor, pose_to_camera: torch.tensor, inv_intrinsics: torch.tensor,
@@ -784,9 +800,9 @@ class TriPlaneNeRF(StyleNeRF):
             fine_color = fine_color.reshape(batchsize, 1, -1, 3).permute(0, 1, 3, 2)
             fine_color = fine_color.reshape(batchsize, 1, 3, n, -1)[:, :, :, :, :Np - 1]
         else:
-            fine_color = fine_color.reshape(batchsize, 1, self.out_dim, n, -1)[:, :, :, :, :Np - 1]
+            fine_color = fine_color.reshape(batchsize, 3, n, -1)[:, :, :, :Np - 1]
 
-        fine_density = fine_density.reshape(batchsize, 1, 1, n, -1)[:, :, :, :, :Np - 1]
+        fine_density = fine_density.reshape(batchsize, 1, n, -1)[:, :, :, :Np - 1]
 
         sum_fine_density = fine_density
 
@@ -794,11 +810,11 @@ class TriPlaneNeRF(StyleNeRF):
         #     # density = inf if density exceeds thres
         #     sum_fine_density = (sum_fine_density > thres) * 100000
 
-        delta = fine_depth[:, :, :, :, 1:] - fine_depth[:, :, :, :, :-1]  # B x 1 x 1 x n x Np-1
-        sum_density_delta: torch.Tensor = sum_fine_density * delta * render_scale  # B x 1 x 1 x n x Np-1
+        delta = fine_depth[:, :, :, 1:] - fine_depth[:, :, :, :-1]  # B x 1 x n x Np-1
+        sum_density_delta: torch.Tensor = sum_fine_density * delta * render_scale  # B x 1 x n x Np-1
 
-        T_i = torch.exp(-(torch.cumsum(sum_density_delta, dim=4) - sum_density_delta))
-        weights = T_i * (1 - torch.exp(-sum_density_delta))  # B x 1 x 1 x n x Nc+Nf-1
+        T_i = torch.exp(-(torch.cumsum(sum_density_delta, dim=3) - sum_density_delta))
+        weights = T_i * (1 - torch.exp(-sum_density_delta))  # B x 1 x n x Nc+Nf-1
 
         if not hasattr(self, "buffers_tensors"):
             self.buffers_tensors = {}
@@ -809,11 +825,11 @@ class TriPlaneNeRF(StyleNeRF):
         # self.temporal_state["fine_T_i"] = T_i
         # self.temporal_state["fine_cum_weight"] = torch.cumsum(weights, dim=-1)
 
-        fine_depth = fine_depth.reshape(batchsize, 1, 1, n, -1)[:, :, :, :, :-1]
+        fine_depth = fine_depth.reshape(batchsize, 1, n, -1)[:, :, :, :-1]
 
-        rendered_color = torch.sum(weights * fine_color, dim=4).squeeze(1)  # B x 3 x n
-        rendered_mask = torch.sum(weights, dim=4).reshape(batchsize, n)  # B x n
-        rendered_disparity = torch.sum(weights * 1 / fine_depth, dim=4).reshape(batchsize, n)  # B x n
+        rendered_color = torch.sum(weights * fine_color, dim=3).squeeze(1)  # B x 3 x n
+        rendered_mask = torch.sum(weights, dim=3).reshape(batchsize, n)  # B x n
+        rendered_disparity = torch.sum(weights * 1 / fine_depth, dim=3).reshape(batchsize, n)  # B x n
 
         if return_intermediate:
             return rendered_color, rendered_mask, rendered_disparity, intermediate_output
@@ -830,9 +846,8 @@ class TriPlaneNeRF(StyleNeRF):
         :param pose_to_camera:
         :param inv_intrinsics:
         :param z:
-        :param world_pose:
+        :param z_rend:
         :param bone_length:
-        :param thres:
         :param render_scale:
         :param Nc:
         :param Nf:

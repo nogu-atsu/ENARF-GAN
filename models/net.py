@@ -161,11 +161,6 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
                                         num_upsample=int(math.log2(self.size // patch_size)),
                                         bg_activation=bg_activation)
 
-    def register_canonical_pose(self, pose: np.ndarray):
-        assert hasattr(self, "nerf_model_type")
-        if self.nerf_model_type == "tri-plane":
-            self.nerf.register_canonical_pose(pose)
-
     def normalized_inv_intrinsics(self, intrinsics: torch.tensor):
         normalized_intrinsics = torch.cat([intrinsics[:2] / self.size, intrinsics.new([[0, 0, 1]])], dim=0)
         normalized_inv_intri = torch.linalg.inv(normalized_intrinsics)
@@ -554,9 +549,7 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
                                                       crop_background=crop_background)
 
     def register_canonical_pose(self, pose: np.ndarray):
-        assert hasattr(self, "nerf_model_type")
-        if self.nerf_model_type == "tri-plane":
-            self.nerf.register_canonical_pose(pose)
+        self.nerf.register_canonical_pose(pose)
 
     def normalized_inv_intrinsics(self, intrinsics: torch.tensor):
         normalized_intrinsics = torch.cat([intrinsics[:2] / self.size, intrinsics.new([[0, 0, 1]])], dim=0)
@@ -586,7 +579,6 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         """
         assert self.num_bone == 1 or (bone_length is not None and pose_to_camera is not None)
         batchsize = pose_to_camera.shape[0]
-        patch_size = self.config.patch_size
 
         grid, homo_img = self.ray_sampler(self.size, self.size, batchsize)
 
@@ -608,8 +600,8 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         fine_weights = self.nerf.buffers_tensors["fine_weights"]
         fine_depth = self.nerf.buffers_tensors["fine_depth"]
 
-        fg_color = fg_color.reshape(batchsize, 3, patch_size, patch_size)
-        fg_mask = fg_mask.reshape(batchsize, 1, patch_size, patch_size)
+        fg_color = fg_color.reshape(batchsize, 3, self.size, self.size)
+        fg_mask = fg_mask.reshape(batchsize, 1, self.size, self.size)
 
         n_latent = self.background_generator.n_latent
         bg_color, _ = self.background_generator([z_for_background, z_for_neural_render], inject_index=n_latent - 4)
