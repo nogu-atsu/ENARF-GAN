@@ -744,6 +744,11 @@ class HumanPoseDataset(THUmanPoseDataset):
         extrinsic[:, :3, 3:] = camera_translation
         self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
 
+        # load canonical pose
+        canonical_pose_path = f"{self.data_root}/canonical.npy"
+        if os.path.exists(canonical_pose_path):
+            self.canonical_pose = np.load(canonical_pose_path)
+
     def scale_pose(self, pose, scale):
         pose[:, :3, 3] *= scale
         return pose
