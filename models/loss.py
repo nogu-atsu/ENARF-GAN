@@ -39,6 +39,7 @@ def push_to_background(fake_mask, background_ratio=0.3):
 
 
 def nerf_bone_loss(fake_mask, bone_mask):
+    assert fake_mask.ndim == bone_mask.ndim
     if fake_mask.shape[-1] != bone_mask.shape[-1]:
         downscale_rate = bone_mask.shape[-1] // fake_mask.shape[-1]
         bone_mask = F.max_pool2d(bone_mask[:, None], downscale_rate, downscale_rate, 0)[:, 0]
