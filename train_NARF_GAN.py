@@ -208,6 +208,10 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 loss_dist = loss_dist_func(fine_weights, fine_depth)
                 loss_gen += loss_dist * config.loss.surface_reg_coef
 
+            if config.loss.tri_plane_reg_coef > 0:
+                loss_triplane = gen.nerf.buffers_tensors["tri_plane_feature"].square().mean()
+                loss_gen += loss_triplane * config.loss.tri_plane_reg_coef
+
             if rank == 0:
                 if iter % 100 == 0:
                     print(iter)

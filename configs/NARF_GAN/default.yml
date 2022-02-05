@@ -90,6 +90,7 @@ loss:
   suppress_small: False
   r1_loss_coef: 0.01
   surface_reg_coef: 0
+  tri_plane_reg_coef: 0
 
 consistency_regularization: False
 replace: True
