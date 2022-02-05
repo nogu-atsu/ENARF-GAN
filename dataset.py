@@ -350,6 +350,13 @@ class THUmanPoseDataset(Dataset):
 
             np.save(f"{data_root}/bone_params_128.npy", poses)
 
+        # load canonical pose
+        if self.crop_algo == "tight":
+            canonical_pose_path = f"smpl_data/neutral_canonical.npy"
+        else:
+            canonical_pose_path = f"smpl_data/male_canonical.npy"
+        if os.path.exists(canonical_pose_path):
+            self.canonical_pose = np.load(canonical_pose_path)
         return poses
 
     def sample_camera_mat(self, cam_t=None, theta=None, phi=None, angle=None):
