@@ -487,16 +487,19 @@ class TriPlaneNeRF(StyleNeRF):
         self.bce = nn.BCEWithLogitsLoss()
         self.l1 = nn.L1Loss()
 
+        self.temporal_state = {}
+
     def prepare_stylegan2(self):
         G_kwargs = dnnlib.EasyDict(class_name='training.networks.Generator', z_dim=self.z_dim, w_dim=self.z_dim,
-                                   mapping_kwargs=dnnlib.EasyDict(), synthesis_kwargs=dnnlib.EasyDict())
+                                   mapping_kwargs=dnnlib.EasyDict(), synthesis_kwargs=dnnlib.EasyDict(use_noise=False))
         G_kwargs.synthesis_kwargs.channel_base = 32768
         G_kwargs.synthesis_kwargs.channel_max = 512
         G_kwargs.mapping_kwargs.num_layers = 8
         G_kwargs.synthesis_kwargs.num_fp16_res = 0
         G_kwargs.synthesis_kwargs.conv_clamp = None
+        self.feat_dim = 32
         g_common_kwargs = dict(c_dim=self.num_frequency_for_other * 2 * self.num_bone_param,
-                               img_resolution=256, img_channels=(32 + self.num_bone) * 3)
+                               img_resolution=256, img_channels=(self.feat_dim + self.num_bone) * 3)
         gen = dnnlib.util.construct_class_by_name(**G_kwargs, **g_common_kwargs)
         return gen
 
@@ -522,7 +525,7 @@ class TriPlaneNeRF(StyleNeRF):
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
 
     @staticmethod
-    def sample_feature(tri_plane_features: torch.tensor, position: torch.tensor):
+    def sample_feature(tri_plane_features: torch.tensor, position: torch.tensor, reduction="sum"):
         """sample tri-plane feature at a position
 
         :param tri_plane_features: (B, feat_dim * 3, size, size)
@@ -534,58 +537,92 @@ class TriPlaneNeRF(StyleNeRF):
         _, _, n = position.shape
         features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
         position_2d = position[:, [0, 1, 1, 2, 2, 0]].reshape(batchsize * 3, 2, n)
-        position_2d = position_2d.permute(0, 2, 1)[:, :, None]
+        position_2d = position_2d.permute(0, 2, 1)[:, :, None]  # (B * 3, n, 1, 2)
         feature = F.grid_sample(features, position_2d, align_corners=False)
         feature = feature.reshape(batchsize, 3, -1, n)
-        feature = feature.sum(dim=1)  # (B, feat_dim, n)
+        if reduction == "sum":
+            feature = feature.sum(dim=1)  # (B, feat_dim, n)
+        elif reduction == "prod":
+            feature = torch.sigmoid(feature).prod(dim=1)
+        else:
+            raise ValueError()
+        # for debug
+        # feature = features.reshape(batchsize * 3, -1, h * w).repeat(1, 1, 20)[:batchsize, :, :n]
         return feature
 
-    @staticmethod
-    def sample_point_feature(tri_plane_features: torch.tensor, position: torch.tensor, padding_value: float = 0):
-        """sample tri-plane feature at a position
+    def sample_weighted_feature(self, tri_plane_features: torch.Tensor, position: torch.Tensor, weight: torch.Tensor,
+                                position_validity: torch.Tensor, padding_value: float = 0):
+        # only compute necessary elements
+        batchsize, n_bone, n = position_validity.shape
+        position_validity = position_validity.reshape(batchsize, -1)
+        args = position_validity.float().argsort(dim=-1,
+                                                 descending=True)  # (B, n_bone * n)
+        max_num_valid = position_validity.sum(dim=1).max()
+        valid_args = args[:, None, :max_num_valid]
+        position_perm = position.permute(0, 2, 1, 3).reshape(batchsize, 3, -1)  # (B, 3, n_bone * n)
+        valid_positions = torch.gather(position_perm, dim=2,
+                                       index=valid_args.expand(batchsize, 3, max_num_valid))  # (B, 3, ?)
+        value = self.sample_feature(tri_plane_features, valid_positions)  # (B, 32, ?)
 
-        :param tri_plane_features: (B, feat_dim * 3, size, size)
-        :param position: [-1, 1] in meter, (B, num_bone, 3, n)
-        :param padding_value: padding for F.grid_sample
+        # gather weight
+        weight = torch.gather(weight.reshape(batchsize, 1, n_bone * n), dim=2, index=valid_args)
 
-        :return: feature: (B, num_bone, 32, n)
-        """
-        batchsize, _, h, w = tri_plane_features.shape
-        _, n_bone, _, n = position.shape
-        features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
-        position_2d = position[:, :, [0, 1, 1, 2, 2, 0]].reshape(batchsize, n_bone, 3, 2, n)
-        position_2d = position_2d.permute(0, 2, 1, 4, 3).reshape(batchsize * 3, n_bone, n, 2)
-        feature = F.grid_sample(features, position_2d, align_corners=False)  # , mode="nearest")
-        feature = feature.reshape(batchsize, 3, -1, n_bone, n)
-        if padding_value != 0:
-            # if all elements of feature is 0, fill padding value
-            feature = feature.masked_fill(feature.square().sum(dim=2, keepdim=True) < 1e5, padding_value)
-        feature = feature.sum(dim=1)  # (B, feat_dim, n_bone, n)
-        return feature
+        # * weight
+        value = value * weight  # (B, 32, ?)
 
-    def calc_weight(self, tri_plane_weights: torch.tensor, position: torch.tensor):
+        # memory efficient
+        output = torch.zeros(batchsize, self.feat_dim, n, device=position.device)
+        output.scatter_add_(dim=2, index=valid_args.expand(batchsize, 32, max_num_valid) % n, src=value)
+        return output
+
+        # # equivalent ops
+        # output = torch.zeros(batchsize, self.feat_dim, n_bone * n, device=position.device)
+        # output.scatter_(dim=2, index=valid_args.expand(batchsize, 32, max_num_valid), src=value)
+        # output = output.reshape(batchsize, self.feat_dim, n_bone, n).permute(0, 2, 1, 3)  # (B, n_bone, 32, n)
+        # output = torch.sum(output, dim=1)
+
+    def calc_weight(self, tri_plane_weights: torch.Tensor, position: torch.Tensor, position_validity: torch.Tensor,
+                    mode="prod"):
         bs, n_bone, _, n = position.shape
-        position = position.reshape(bs * n_bone, 1, 3, n)
-        weight = self.sample_point_feature(tri_plane_weights, position, padding_value=-1e8)  # (B * n_bone, 1, 1, n)
-        weight = weight.reshape(bs, n_bone, n)
-        weight = torch.softmax(weight, dim=1)
+        # position = position.reshape(bs * n_bone, 1, 3, n)
+        # weight = self.sample_point_feature_(tri_plane_weights,
+        #                                     position)  # , padding_value=-1e8)  # (B * n_bone, 1, 1, n)
+        position = position.reshape(bs * n_bone, 3, n)
+
+        if mode == "sum":
+            # sum and softmax
+            weight = self.sample_feature(tri_plane_weights, position)  # (B * n_bone, 1, n)
+            weight = weight.reshape(bs, n_bone, n)
+
+            # # wight for invalid point is 0
+            weight = weight - ~position_validity * 1e4
+            weight = torch.softmax(weight, dim=1)
+
+        elif mode == "prod":
+            # sigmoid and prod
+            weight = self.sample_feature(tri_plane_weights, position, reduction="prod")  # (B * n_bone, 1, n)
+            weight = weight.reshape(bs, n_bone, n)
+        else:
+            weight = torch.ones(bs, n_bone, n, device=position.device) / n_bone
+
         return weight
 
-    def calc_color_and_density(self, local_pos: torch.Tensor, canonical_pos: torch.Tensor, z: torch.Tensor,
+    def calc_color_and_density(self, local_pos: torch.Tensor, canonical_pos: torch.Tensor,
+                               tri_plane_feature: torch.Tensor,
                                z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str):
         """
         forward func of ImplicitField
         :param local_pos: local coordinate, (B * n_bone, 3, n) (n = num_of_ray * points_on_ray)
         :param canonical_pos: canonical coordinate, (B, n_bone, 3, n) (n = num_of_ray * points_on_ray)
-        :param z: b x dim
+        :param tri_plane_feature:
         :param z_rend: b x groups x 4 x 4
         :param bone_length: b x groups x 1
         :param mode: str
         :return: b x groups x 4 x n
         """
 
-        density, color = self.backbone(canonical_pos, z, z_rend, bone_length, mode)
-        in_cube_p = in_cube(local_pos)
+        in_cube_p = in_cube(local_pos)  # (B, n_bone, n)
+        density, color = self.backbone(canonical_pos, in_cube_p, tri_plane_feature, z_rend, bone_length, mode)
         density *= in_cube_p.any(dim=1, keepdim=True)
         return density, color  # B x groups x 1 x n, B x groups x 3 x n
 
@@ -607,7 +644,7 @@ class TriPlaneNeRF(StyleNeRF):
         local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n*Nc)
 
         # to canonical coordinate
-        canonical_scale = (bone_length / self.canonical_bone_length[:, None] / self.coordinate_scale)[:, :, :, None]
+        canonical_scale = (self.canonical_bone_length[:, None] / bone_length / self.coordinate_scale)[:, :, :, None]
         canonical_points = local_points * canonical_scale
         canonical_R = self.canonical_pose[:, :3, :3]  # (n_bone, 3, 3)
         canonical_t = self.canonical_pose[:, :3, 3:]  # (n_bone, 3, 1)
@@ -619,7 +656,7 @@ class TriPlaneNeRF(StyleNeRF):
         return local_points, canonical_points
 
     def coarse_to_fine_sample(self, image_coord: torch.tensor, pose_to_camera: torch.tensor,
-                              inv_intrinsics: torch.tensor, z: torch.tensor, z_rend: torch.tensor,
+                              inv_intrinsics: torch.tensor, tri_plane_feature: torch.tensor, z_rend: torch.tensor,
                               bone_length: torch.tensor = None, near_plane: float = 0.3, far_plane: float = 5,
                               Nc: int = 64, Nf: int = 128, render_scale: float = 1
                               ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -646,7 +683,8 @@ class TriPlaneNeRF(StyleNeRF):
                                                                                        bone_length)
             # coarse density
             coarse_density = self.calc_color_and_density(local_coarse_points, canonical_coarse_points,
-                                                         z, z_rend, bone_length, mode="weight_position")[
+                                                         tri_plane_feature, z_rend, bone_length,
+                                                         mode="weight_feature")[
                 0]  # B x groups x n*Nc
 
             Np = coarse_depth.shape[-1]  # Nc or Nc + 1
@@ -676,16 +714,17 @@ class TriPlaneNeRF(StyleNeRF):
 
             fine_points = fine_points.reshape(batchsize, 3, -1)
 
-        # self.temporal_state = {
-        #     "coarse_density": coarse_density,
-        #     "coarse_T_i": T_i,
-        #     "coarse_weights": weights,
-        #     "coarse_depth": coarse_depth,
-        #     "fine_depth": fine_depth,
-        #     "fine_points": fine_points,
-        #     "near_plane": near_plane,
-        #     "far_plane": far_plane
-        # }
+        if not self.training:
+            self.temporal_state.update({
+                "coarse_density": coarse_density,
+                "coarse_T_i": T_i,
+                "coarse_weights": weights,
+                "coarse_depth": coarse_depth,
+                "fine_depth": fine_depth,
+                "fine_points": fine_points,
+                "near_plane": near_plane,
+                "far_plane": far_plane
+            })
 
         if pose_to_camera.requires_grad:
             raise NotImplementedError("Currently pose should not be differentiable")
@@ -695,13 +734,14 @@ class TriPlaneNeRF(StyleNeRF):
             fine_points,  # (B, 3, n*Nf)
         )
 
-    def backbone(self, p: torch.Tensor, z: torch.Tensor, z_rend: torch.Tensor, bone_length: torch.Tensor,
-                 mode: str = "weight_feature"):
+    def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, tri_plane_feature: torch.Tensor,
+                 z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str = "weight_feature"):
         """
 
         Args:
-            p: position in canonical coordinate, (B, 1, 3, n)
-            z: (B, dim)
+            p: position in canonical coordinate, (B, n_bone, 3, n)
+            position_validity: bool tensor for validity of p, (B, n_bone, n)
+            tri_plane_feature:
             z_rend: (B, dim)
             bone_length: (B, n_bone)
             mode: "weight_feature" or "weight_position"
@@ -710,41 +750,40 @@ class TriPlaneNeRF(StyleNeRF):
         """
         # don't support mip-nerf rendering
         assert isinstance(p, torch.Tensor)
-        assert z is not None
         assert bone_length is not None
         assert mode in ["weight_position", "weight_feature"]
 
-        # forward外
-        # canonical coordinateに変換
-        # -generate tri-plane feature conditioned on z and bone_length
-        encoded_length = encode(bone_length, self.num_frequency_for_other, num_bone=self.num_bone_param)
-        tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0])  # (B, (32 + n_bone) * 3, h, w)
-
-        # forward steps
-        # mask valueを取得，weight計算
-        # 1. 重みづけ平均で座標をmap
-        # # feature 取得
-        # 2. local 座標にmapする
-        # # featureを取得して，weightでaverage
-
         bs, n_bone, _, n = p.shape
-        weight = self.calc_weight(tri_plane_feature[:, 32 * 3:].reshape(bs * 23, 3, 256, 256), p)  # (bs, n_bone, n)
-        weighted_position = (p * weight[:, :, None]).sum(dim=1)  # (bs, 3, n)
+
+        # Make the invalid position outside the range of -1 to 1 (all invalid positions become 2)
+        masked_position = p * position_validity[:, :, None] + 2 * ~position_validity[:, :, None]
+        weight = self.calc_weight(tri_plane_feature[:, 32 * 3:].reshape(bs * n_bone, 3, 256, 256),
+                                  masked_position, position_validity)  # (bs, n_bone, n)
+
+        if not self.training:
+            self.temporal_state.update({
+                "weight": weight,
+            })
         # canonical position based
         if mode == "weight_position":
+            weighted_position_validity = position_validity.any(dim=1)[:, None]
+            weighted_position = (p * weight[:, :, None]).sum(dim=1)  # (bs, 3, n)
+            # Make the invalid position outside the range of -1 to 1 (all invalid positions become 2)
+            weighted_position = weighted_position * weighted_position_validity + 2 * ~weighted_position_validity
             feature = self.sample_feature(tri_plane_feature[:, :32 * 3], weighted_position)  # (B, 32, n)
             color_density = self.mlp(feature, z_rend)  # (B, 4, n)
 
         # concat position based
         elif mode == "weight_feature":
-            feature = self.sample_point_feature(tri_plane_feature[:, :32 * 3], p)  # (B, 32, n_bone, n)
-            feature = torch.sum(feature * weight[:, None], dim=2)  # (B, 32, n)
+            feature = self.sample_weighted_feature(tri_plane_feature[:, :32 * 3], masked_position,
+                                                   weight,
+                                                   position_validity)  # (B, 32, n)
             color_density = self.mlp(feature, z_rend)  # (B, 4, n)
         else:
             raise ValueError()
         color, density = color_density[:, :3], color_density[:, 3:]
 
-        density = self.density_activation(density)
+        density = self.density_activation(density) * 10
         color = torch.tanh(color)
         return density, color
 
@@ -768,9 +807,13 @@ class TriPlaneNeRF(StyleNeRF):
         if self.coordinate_scale != 1:
             pose_to_camera[:, :, :3, 3] *= self.coordinate_scale
 
+        # generate tri-plane feature conditioned on z and bone_length
+        encoded_length = encode(bone_length, self.num_frequency_for_other, num_bone=self.num_bone_param)
+        tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0])  # (B, (32 + n_bone) * 3, h, w)
+
         fine_depth, fine_points = self.coarse_to_fine_sample(image_coord, pose_to_camera,
                                                              inv_intrinsics,
-                                                             z=z, z_rend=z_rend,
+                                                             tri_plane_feature=tri_plane_feature, z_rend=z_rend,
                                                              bone_length=bone_length,
                                                              near_plane=near_plane, Nc=Nc, Nf=Nf,
                                                              render_scale=render_scale)
@@ -780,8 +823,9 @@ class TriPlaneNeRF(StyleNeRF):
 
         local_fine_points, canonical_fine_points = self.to_local_and_canonical(fine_points, pose_to_camera, bone_length)
 
-        fine_density, fine_color = self.calc_color_and_density(local_fine_points, canonical_fine_points, z, z_rend,
-                                                               bone_length, mode="weight_position")
+        fine_density, fine_color = self.calc_color_and_density(local_fine_points, canonical_fine_points,
+                                                               tri_plane_feature, z_rend,
+                                                               bone_length, mode="weight_feature")
         Np = fine_depth.shape[-1]  # Nf
 
         if return_intermediate:
@@ -820,10 +864,17 @@ class TriPlaneNeRF(StyleNeRF):
             self.buffers_tensors = {}
         self.buffers_tensors["fine_weights"] = weights
         self.buffers_tensors["fine_depth"] = fine_depth
+        self.buffers_tensors["tri_plane_feature"] = tri_plane_feature
 
-        # self.temporal_state["fine_density"] = fine_density
-        # self.temporal_state["fine_T_i"] = T_i
-        # self.temporal_state["fine_cum_weight"] = torch.cumsum(weights, dim=-1)
+        if not self.training:
+            self.temporal_state.update({
+                "canonical_fine_points": canonical_fine_points,
+                "in_cube": in_cube(local_fine_points),
+                "tri_plane_feature": tri_plane_feature,
+            })
+            self.temporal_state["fine_density"] = fine_density
+            self.temporal_state["fine_T_i"] = T_i
+            self.temporal_state["fine_cum_weight"] = torch.cumsum(weights, dim=-1)
 
         fine_depth = fine_depth.reshape(batchsize, 1, n, -1)[:, :, :, :-1]
 
