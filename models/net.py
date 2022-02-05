@@ -601,12 +601,12 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         fine_depth = self.nerf.buffers_tensors["fine_depth"]
 
         fg_color = fg_color.reshape(batchsize, 3, self.size, self.size)
-        fg_mask = fg_mask.reshape(batchsize, 1, self.size, self.size)
+        fg_mask = fg_mask.reshape(batchsize, self.size, self.size)
 
         n_latent = self.background_generator.n_latent
         bg_color, _ = self.background_generator([z_for_background, z_for_neural_render], inject_index=n_latent - 4)
 
-        rendered_color = fg_color + (1 - fg_mask) * bg_color
+        rendered_color = fg_color + (1 - fg_mask[:, None]) * bg_color
 
         if return_intermediate:
             fine_points, fine_density = nerf_output[-1]
