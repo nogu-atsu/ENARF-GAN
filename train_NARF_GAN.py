@@ -175,6 +175,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 print(f"{iter + 1} iter, {(time.time() - start_time) / (iter - init_iter + 1)} s/iter")
             gen.train()
             dis.train()
+            dis.requires_grad_(False)
 
             real_img = img["img"].cuda(non_blocking=True).float()
             bone_mask = pose["bone_mask"].cuda(non_blocking=True)
@@ -194,11 +195,12 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                                                                         bone_length, z, inv_intrinsic)
 
             background_ratio = gen.background_ratio
-            loss_bone = bone_loss_func(fake_low_res_mask, bone_mask, background_ratio) * config.loss.bone_guided_coef
+            loss_bone = bone_loss_func(fake_low_res_mask, bone_mask,
+                                       background_ratio) * config.loss.bone_guided_coef
 
             dis_fake = dis(fake_img, ddp, world_size)
-            gen_optimizer.zero_grad()
-            dis_optimizer.zero_grad()
+            gen_optimizer.zero_grad(set_to_none=True)
+            dis_optimizer.zero_grad(set_to_none=True)
             loss_adv_gen = adv_loss_gen(dis_fake, adv_loss_type, tmp=1)
             loss_gen = loss_adv_gen + loss_bone
 
@@ -223,6 +225,9 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             # torch.cuda.empty_cache()
 
             # update discriminator
+            gen_optimizer.zero_grad(set_to_none=True)
+            dis_optimizer.zero_grad(set_to_none=True)
+            dis.requires_grad_(True)
             dis_fake = dis(fake_img.detach(), ddp, world_size)
             dis_real = dis(real_img, ddp, world_size)
 
@@ -231,12 +236,12 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 if iter % 100 == 0:
                     write(iter, loss_dis, "adv_loss_dis", writer)
 
-            gen_optimizer.zero_grad()
-            dis_optimizer.zero_grad()
             loss_dis.backward()
             dis_optimizer.step()
 
             if iter % 16 == 0:
+                gen_optimizer.zero_grad(set_to_none=True)
+                dis_optimizer.zero_grad(set_to_none=True)
                 real_img.requires_grad = True
 
                 # mix_ratio = torch.rand(real_img.shape[0], device=real_img.device)[:, None, None, None]
@@ -248,10 +253,11 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 if rank == 0:
                     write(iter, r1_loss, "r1_reg", writer)
 
-                gen_optimizer.zero_grad()
-                dis_optimizer.zero_grad()
-                (1 / 2 * r1_loss * 16 * r1_loss_coef + 0 * dis_real[0]).backward()  # 0 * dis_real[0] avoids zero grad
+                (1 / 2 * r1_loss * 16 * r1_loss_coef + 0 * dis_real[
+                    0]).backward()  # 0 * dis_real[0] avoids zero grad
                 dis_optimizer.step()
+                torch.cuda.empty_cache()
+
             if rank == 0:
                 if iter == 10:
                     with open(f"{out_dir}/result/{out_name}/iter_10_succeeded.txt", "w") as f:
@@ -276,7 +282,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                                    "dis_opt": dis_optimizer.state_dict(),
                                    }
                     torch.save(save_params, f"{out_dir}/result/{out_name}/snapshot_latest.pth")
-                    torch.save(save_params, f"{out_dir}/result/{out_name}/snapshot_{(iter // 50000 + 1) * 50000}.pth")
+                    torch.save(save_params,
+                               f"{out_dir}/result/{out_name}/snapshot_{(iter // 50000 + 1) * 50000}.pth")
 
             # torch.cuda.empty_cache()
             iter += 1
