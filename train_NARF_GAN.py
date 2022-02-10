@@ -215,6 +215,12 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
                 loss_triplane = gen.nerf.buffers_tensors["tri_plane_feature"].square().mean()
                 loss_gen += loss_triplane * config.loss.tri_plane_reg_coef
 
+            if config.loss.tri_plane_mask_reg_coef > 0:
+                mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].clamp_min(-5)
+                loss_triplane_mask = mask.mean() + mask.var(dim=0).mean() * 100
+                # loss_triplane_mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].var(dim=0).mean()
+                loss_gen += loss_triplane_mask * config.loss.tri_plane_mask_reg_coef
+
             if rank == 0:
                 if iter % 100 == 0:
                     print(iter)
