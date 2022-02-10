@@ -140,8 +140,11 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
     bone_loss_func = nerf_patch_loss
 
-    gen_optimizer = optim.Adam(gen.parameters(), lr=1e-3, betas=(0, 0.99))
-    dis_optimizer = optim.Adam(dis.parameters(), lr=2e-3, betas=(0, 0.99))
+    gen_lr = 1e-3 * batchsize / 32
+    dis_lr = 2e-3 * batchsize / 32
+
+    gen_optimizer = optim.Adam(gen.parameters(), lr=gen_lr, betas=(0, 0.99))
+    dis_optimizer = optim.Adam(dis.parameters(), lr=dis_lr, betas=(0, 0.99))
 
     iter = 0
     start_time = time.time()
