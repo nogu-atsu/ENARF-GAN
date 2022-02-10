@@ -1,6 +1,6 @@
 import sys
 import warnings
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Optional
 
 import numpy as np
 import torch
@@ -525,19 +525,30 @@ class TriPlaneNeRF(StyleNeRF):
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
 
     @staticmethod
-    def sample_feature(tri_plane_features: torch.tensor, position: torch.tensor, reduction="sum"):
+    def sample_feature(tri_plane_features: torch.tensor, position: torch.tensor, reduction: str = "sum",
+                       batch_idx: Optional[torch.Tensor] = None):
         """sample tri-plane feature at a position
 
-        :param tri_plane_features: (B, feat_dim * 3, size, size)
+        :param tri_plane_features: (B, feat_dim * 3, size, ?)
         :param position: [-1, 1] in meter, (B, 3, n)
+        :param reduction
+        :param batch_idx: index of position in minibatch
 
         :return: feature: (B, 32, n)
         """
         batchsize, _, h, w = tri_plane_features.shape
+        assert batchsize == 1 or batch_idx is None
         _, _, n = position.shape
         features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
         position_2d = position[:, [0, 1, 1, 2, 2, 0]].reshape(batchsize * 3, 2, n)
         position_2d = position_2d.permute(0, 2, 1)[:, :, None]  # (B * 3, n, 1, 2)
+
+        if batch_idx is not None:  # transform x coordinate
+            actual_batchsize = w // (h + 1)
+            scale = 1 / (actual_batchsize * (1 + 1 / h))
+            position_2d[:, :, :, 0] = (position_2d[:, :, :, 0] * scale +
+                                       batch_idx[None, :, None] * (2 / actual_batchsize) + (scale - 1))
+
         feature = F.grid_sample(features, position_2d, align_corners=False)
         feature = feature.reshape(batchsize, 3, -1, n)
         if reduction == "sum":
@@ -581,6 +592,42 @@ class TriPlaneNeRF(StyleNeRF):
         # output = output.reshape(batchsize, self.feat_dim, n_bone, n).permute(0, 2, 1, 3)  # (B, n_bone, 32, n)
         # output = torch.sum(output, dim=1)
 
+    def sample_weighted_feature_v2(self, tri_plane_features: torch.Tensor, position: torch.Tensor,
+                                   weight: torch.Tensor, position_validity: torch.Tensor, padding_value: float = 0):
+        # only compute necessary elements
+        batchsize, n_bone, n = position_validity.shape
+        _, ch, tri_size, _ = tri_plane_features.shape
+
+        # pad feature
+        feature_padded = F.pad(tri_plane_features, (0, 1))  # (B, ch, 256, 257)
+        feature_padded = feature_padded.permute(1, 2, 0, 3).reshape(1, ch, tri_size, (tri_size + 1) * batchsize)
+
+        # gather
+        position_validity = position_validity.reshape(-1)
+        assert position_validity.dtype == torch.bool
+        valid_args = torch.where(position_validity)[0]  # (num_valid, )
+        # print(len(valid_args) / batchsize / n)
+        position_perm = position.permute(2, 0, 1, 3).reshape(3, batchsize * n_bone * n)  # (3, B * n_bone * n)
+        valid_positions = torch.gather(position_perm, dim=1,
+                                       index=valid_args[None].expand(3, -1))[None]  # (1, 3, num_valid)
+
+        value = self.sample_feature(feature_padded, valid_positions,
+                                    batch_idx=valid_args // (n_bone * n))  # (1, 32, num_valid)
+
+        # gather weight
+        weight = torch.gather(weight.reshape(-1), dim=0, index=valid_args)
+
+        # * weight
+        value = value * weight[None, None]  # (1, 32, num_valid)
+
+        # memory efficient
+        output = torch.zeros(self.feat_dim, batchsize * n, device=position.device, dtype=torch.float32)
+        scatter_idx = valid_args // (n_bone * n) * n + valid_args % n
+        output.scatter_add_(dim=1, index=scatter_idx[None].expand(32, -1), src=value.squeeze(0))
+        output = output.reshape(self.feat_dim, batchsize, n).permute(1, 0, 2)
+        output = output.contiguous()
+        return output
+
     def calc_weight(self, tri_plane_weights: torch.Tensor, position: torch.Tensor, position_validity: torch.Tensor,
                     mode="prod"):
         bs, n_bone, _, n = position.shape
@@ -622,6 +669,7 @@ class TriPlaneNeRF(StyleNeRF):
         """
 
         in_cube_p = in_cube(local_pos)  # (B, n_bone, n)
+        in_cube_p = in_cube_p * (canonical_pos.abs() < 1).all(dim=2)  # (B, n_bone, n)
         density, color = self.backbone(canonical_pos, in_cube_p, tri_plane_feature, z_rend, bone_length, mode)
         density *= in_cube_p.any(dim=1, keepdim=True)
         return density, color  # B x groups x 1 x n, B x groups x 3 x n
@@ -775,9 +823,9 @@ class TriPlaneNeRF(StyleNeRF):
 
         # concat position based
         elif mode == "weight_feature":
-            feature = self.sample_weighted_feature(tri_plane_feature[:, :32 * 3], masked_position,
-                                                   weight,
-                                                   position_validity)  # (B, 32, n)
+            feature = self.sample_weighted_feature_v2(tri_plane_feature[:, :32 * 3], masked_position,
+                                                      weight,
+                                                      position_validity)  # (B, 32, n)
             color_density = self.mlp(feature, z_rend)  # (B, 4, n)
         else:
             raise ValueError()
