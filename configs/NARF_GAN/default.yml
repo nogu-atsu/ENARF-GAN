@@ -74,6 +74,8 @@ generator_params:
     coordinate_scale: 1
     mip_nerf: False
     mip_nerf_resolution:
+    # tri-plane model
+    multiply_density_with_triplane_wieght: False
 
 discriminator_params:
   minibatch_std: True

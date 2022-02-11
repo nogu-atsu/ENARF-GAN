@@ -831,7 +831,10 @@ class TriPlaneNeRF(StyleNeRF):
             raise ValueError()
         color, density = color_density[:, :3], color_density[:, 3:]
 
-        density = self.density_activation(density) * 10
+        if self.config.multiply_density_with_triplane_wieght:
+            density = self.density_activation(density) * (10 * weight.max(dim=1, keepdim=True)[0])
+        else:
+            density = self.density_activation(density) * 10
         color = torch.tanh(color)
         return density, color
 
