@@ -530,6 +530,42 @@ class PoseDiscriminator(nn.Module):
         return out
 
 
+class PretrainedStyleGAN(nn.Module):
+    def __init__(self):
+        super(PretrainedStyleGAN, self).__init__()
+        import sys
+        import kornia
+        sys.path.append("stylegan2_pytorch")
+        from stylegan2_pytorch.model import Generator
+        size = 256
+        latent = 512
+        n_mlp = 8
+        channel_multiplier = 2
+        device = "cuda"
+        ckpt = "stylegan2_pytorch/stylegan2-church-config-f.pt"
+        g_ema = Generator(
+            size, latent, n_mlp, channel_multiplier=channel_multiplier
+        ).to(device)
+        checkpoint = torch.load(ckpt)
+
+        g_ema.load_state_dict(checkpoint["g_ema"])
+        g_ema.input.input = nn.Parameter(g_ema.input.input[:, :, 1:-1].data)
+
+        self.size = 128
+        self.gen = g_ema
+        self.cropper = kornia.augmentation.RandomCrop((self.size, self.size), resample='NEAREST')
+        self.n_latent = g_ema.n_latent
+
+    def forward(self, z: Tuple[torch.Tensor, torch.Tensor], inject_index):
+        z = torch.cat(z, dim=1)
+        sample, _ = self.gen([z], inject_index=inject_index)
+        if self.training:
+            sample = self.cropper(sample)
+        else:
+            sample = sample[:, :, :, self.size // 2: self.size * 3 // 2]
+        return sample, None
+
+
 class TriNeRFGenerator(nn.Module):  # tri-plane nerf
     def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None):
         super(TriNeRFGenerator, self).__init__()
@@ -542,11 +578,15 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         z_dim = config.z_dim
         crop_background = config.crop_background
 
-        self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
+        self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=[z_dim * 2, z_dim], num_bone=num_bone,
+                                 bone_length=True,
                                  parent=parent_id, num_bone_param=num_bone_param)
-        self.background_generator = StyleGANGenerator(size=size, style_dim=z_dim,
-                                                      n_mlp=4, last_channel=3,
-                                                      crop_background=crop_background)
+        if config.pretrained_background:
+            self.background_generator = PretrainedStyleGAN()
+        else:
+            self.background_generator = StyleGANGenerator(size=size, style_dim=z_dim,
+                                                          n_mlp=4, last_channel=3,
+                                                          crop_background=crop_background)
 
     def register_canonical_pose(self, pose: np.ndarray):
         self.nerf.register_canonical_pose(pose)
