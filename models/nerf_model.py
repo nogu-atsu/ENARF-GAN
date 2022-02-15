@@ -166,29 +166,29 @@ class StyleNeRF(NeRF):
         self.bce = nn.BCEWithLogitsLoss()
         self.l1 = nn.L1Loss()
 
-    @property
-    def memory_cost(self):
-        raise NotImplementedError()
-        m = 0
-        for layer in self.children():
-            if isinstance(layer, (NormalizedConv1d, EqualLinear, EqualConv1d, MLP)):
-                m += layer.memory_cost
-        return m
-
-    @property
-    def flops(self):
-        raise NotImplementedError()
-        fl = 0
-        for layer in self.children():
-            if isinstance(layer, (NormalizedConv1d, EqualLinear, EqualConv1d, MLP)):
-                fl += layer.flops
-
-        if self.z_dim > 0:
-            fl += self.hidden_size * 2
-        if self.use_bone_length:
-            fl += self.hidden_size
-        fl += self.hidden_size * 2
-        return fl
+    # @property
+    # def memory_cost(self):
+    #     raise NotImplementedError()
+    #     m = 0
+    #     for layer in self.children():
+    #         if isinstance(layer, (NormalizedConv1d, EqualLinear, EqualConv1d, MLP)):
+    #             m += layer.memory_cost
+    #     return m
+    #
+    # @property
+    # def flops(self):
+    #     raise NotImplementedError()
+    #     fl = 0
+    #     for layer in self.children():
+    #         if isinstance(layer, (NormalizedConv1d, EqualLinear, EqualConv1d, MLP)):
+    #             fl += layer.flops
+    #
+    #     if self.z_dim > 0:
+    #         fl += self.hidden_size * 2
+    #     if self.use_bone_length:
+    #         fl += self.hidden_size
+    #     fl += self.hidden_size * 2
+    #     return fl
 
     def get_mu_sigma(self, camera_origin: torch.tensor, ray_direction: torch.tensor, depth: torch.tensor,
                      inv_intrinsics: torch.tensor):
