@@ -1,5 +1,6 @@
 import math
-from typing import Optional
+import time
+from typing import Optional, List, Tuple
 
 import numpy as np
 import torch
@@ -8,6 +9,7 @@ import torchvision
 from torch import nn
 
 from NARF.models.model_utils import whole_image_grid_ray_sampler
+from models.model_utils import mask_based_sampler
 from NARF.models.net import NeRF
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d, Blur
@@ -651,3 +653,74 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
             return rendered_color, fg_mask, fine_points, fine_density
 
         return rendered_color, fg_mask, fine_weights, fine_depth
+
+
+class SSOTriNARFGenerator(nn.Module):
+    def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None):
+        super(SSOTriNARFGenerator, self).__init__()
+        self.config = config
+        self.size = size
+        self.num_bone = num_bone
+        self.ray_sampler = mask_based_sampler
+
+        self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=20, num_bone=num_bone,
+                                 bone_length=True,
+                                 parent=parent_id, num_bone_param=num_bone_param)
+
+    @property
+    def memory_cost(self):
+        return self.nerf.memory_cost
+
+    @property
+    def flops(self):
+        return self.nerf.flops
+
+    @staticmethod
+    def positional_encoding(x: torch.Tensor, num_frequency: int) -> torch.Tensor:
+        """
+        positional encoding
+        :param x: (B, )
+        :param num_frequency: L in nerf paper
+        :return:(B, n_freq * 2)
+        """
+        x = x[:, None] * 2 ** torch.arange(num_frequency, device=x.device)
+        encoded = torch.cat([torch.cos(x), torch.sin(x)], dim=1)
+        return encoded
+
+    def forward(self, pose_to_camera, camera_pose, mask, frame_time, bone_length, inv_intrinsics,
+                background: Optional[float] = None):
+        """
+        generate image from 3d bone mask
+        :param pose_to_camera: camera coordinate of joint
+        :param camera_pose: camera rotation
+        :param mask: foreground mask of object, (B, img_size, img_size)
+        :param frame_time: normalized time of frame
+        :param bone_length:
+        :param background: background color
+        :param inv_intrinsics:
+        :return:
+        """
+        assert bone_length is not None and pose_to_camera is not None
+        assert isinstance(inv_intrinsics, torch.Tensor)
+        batchsize = pose_to_camera.shape[0]
+        ray_batchsize = self.config.ray_batchsize  # TODO: add this to config
+
+        grid, img_coord = self.ray_sampler(mask, ray_batchsize, batchsize)
+
+        # sparse rendering
+        z1 = z2 = self.positional_encoding(frame_time, num_frequency=10)
+
+        # TODO: randomly replace z1 during training
+        rendered_color, rendered_mask = self.nerf(batchsize, img_coord,
+                                                  pose_to_camera, inv_intrinsics, z1, z2,
+                                                  bone_length, thres=0.0,
+                                                  Nc=self.config.nerf_params.Nc,
+                                                  Nf=self.config.nerf_params.Nf,
+                                                  return_intermediate=False,
+                                                  camera_pose=camera_pose,
+                                                  )
+
+        if background is None:
+            background = -1
+        rendered_color = rendered_color + background * (1 - rendered_mask[:, None])
+        return rendered_color, rendered_mask, grid
