@@ -104,6 +104,93 @@ def prepare_models(gen_config, dis_config, pose_dataset, size):
     return gen, dis
 
 
+def train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length, inv_intrinsic,
+               bone_loss_func, bone_mask, dis, ddp, world_size, gen_optimizer, dis_optimizer,
+               adv_loss_type, rank, writer, real_img, r1_loss_coef):
+    # randomly sample latent
+    z = torch.cuda.FloatTensor(batchsize, config.generator_params.z_dim * 4).normal_()
+
+    fake_img, fake_low_res_mask, fine_weights, fine_depth = gen(pose_to_camera, pose_to_world,
+                                                                bone_length, z, inv_intrinsic)
+
+    background_ratio = gen.background_ratio
+    loss_bone = bone_loss_func(fake_low_res_mask, bone_mask,
+                               background_ratio) * config.loss.bone_guided_coef
+
+    dis_fake = dis(fake_img, ddp, world_size)
+    gen_optimizer.zero_grad(set_to_none=True)
+    dis_optimizer.zero_grad(set_to_none=True)
+    loss_adv_gen = adv_loss_gen(dis_fake, adv_loss_type, tmp=1)
+    loss_gen = loss_adv_gen + loss_bone
+
+    if config.loss.surface_reg_coef > 0:
+        loss_dist = loss_dist_func(fine_weights, fine_depth)
+        loss_gen += loss_dist * config.loss.surface_reg_coef
+
+    if config.loss.tri_plane_reg_coef > 0:
+        loss_triplane = gen.nerf.buffers_tensors["tri_plane_feature"].square().mean()
+        loss_gen += loss_triplane * config.loss.tri_plane_reg_coef
+
+    if config.loss.tri_plane_mask_reg_coef > 0:
+        mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].clamp_min(-5)
+        loss_triplane_mask = mask.mean() + mask.var(dim=0).mean() * 100
+        # loss_triplane_mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].var(dim=0).mean()
+        loss_gen += loss_triplane_mask * config.loss.tri_plane_mask_reg_coef
+
+    if rank == 0:
+        if iter % 100 == 0:
+            print(iter)
+            write(iter, loss_adv_gen, "adv_loss_gen", writer)
+            write(iter, loss_bone, "bone_loss", writer)
+            if config.loss.surface_reg_coef > 0:
+                write(iter, loss_dist, "loss_dist", writer)
+
+    if iter + 1 > config.start_gen_training:
+        loss_gen.backward()
+        torch.nn.utils.clip_grad_norm_(gen.parameters(), 5.0)
+        gen_optimizer.step()
+    else:
+        loss_gen.backward()
+
+    # torch.cuda.empty_cache()
+
+    # update discriminator
+    gen_optimizer.zero_grad(set_to_none=True)
+    dis_optimizer.zero_grad(set_to_none=True)
+    dis.requires_grad_(True)
+    dis_fake = dis(fake_img.detach(), ddp, world_size)
+    dis_real = dis(real_img, ddp, world_size)
+
+    loss_dis = adv_loss_dis(dis_real, dis_fake, adv_loss_type)
+    if rank == 0:
+        if iter % 100 == 0:
+            write(iter, loss_dis, "adv_loss_dis", writer)
+
+    loss_dis.backward()
+    dis_optimizer.step()
+
+    if iter % 16 == 0:
+        gen_optimizer.zero_grad(set_to_none=True)
+        dis_optimizer.zero_grad(set_to_none=True)
+        real_img.requires_grad = True
+        torch.cuda.empty_cache()
+
+        # mix_ratio = torch.rand(real_img.shape[0], device=real_img.device)[:, None, None, None]
+        # mixed_img = real_img * mix_ratio + fake_img.detach() * (1 - mix_ratio)
+        mixed_img = real_img
+
+        dis_real = dis(mixed_img, ddp, world_size)
+        r1_loss = d_r1_loss(dis_real, mixed_img)
+        if rank == 0:
+            write(iter, r1_loss, "r1_reg", writer)
+
+        (1 / 2 * r1_loss * 16 * r1_loss_coef + 0 * dis_real[
+            0]).backward()  # 0 * dis_real[0] avoids zero grad
+        dis_optimizer.step()
+        torch.cuda.empty_cache()
+    return fake_img
+
+
 def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
     # TODO(xiao): move outside
     torch.backends.cudnn.benchmark = True
@@ -114,6 +201,8 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
         writer = tbx.SummaryWriter(f"{out_dir}/runs/{out_name}")
         os.makedirs(f"{out_dir}/result/{out_name}", exist_ok=True)
         record_setting(f"{out_dir}/result/{out_name}")
+    else:
+        writer = None
 
     size = config.dataset.image_size
     num_iter = config.num_iter
@@ -160,14 +249,17 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             else:
                 gen_module = gen
                 dis_module = dis
-            for k in list(snapshot["gen"].keys()):
-                if "activate.bias" in k:
-                    snapshot["gen"][k[:-13] + "bias"] = snapshot["gen"][k].reshape(1, -1, 1, 1)
-                    del snapshot["gen"][k]
+            # for k in list(snapshot["gen"].keys()):
+            #     if "activate.bias" in k:
+            #         snapshot["gen"][k[:-13] + "bias"] = snapshot["gen"][k].reshape(1, -1, 1, 1)
+            #         del snapshot["gen"][k]
             gen_module.load_state_dict(snapshot["gen"], strict=True)
             dis_module.load_state_dict(snapshot["dis"])
-            gen_optimizer.load_state_dict(snapshot["gen_opt"])
-            dis_optimizer.load_state_dict(snapshot["dis_opt"])
+            # gen.init_bg()
+            # gen_optimizer = optim.Adam(gen.parameters(), lr=1e-3, betas=(0, 0.99))
+
+            # gen_optimizer.load_state_dict(snapshot["gen_opt"])
+            # dis_optimizer.load_state_dict(snapshot["dis_opt"])
             iter = snapshot["iteration"]
             # start_time = snapshot["start_time"]
             del snapshot
@@ -191,85 +283,9 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             if real_img.shape[0] != batchsize or bone_mask.shape[0] != batchsize:  # drop last minibatch
                 continue
 
-            # randomly sample latent
-            z = torch.cuda.FloatTensor(batchsize, config.generator_params.z_dim * 4).normal_()
-
-            fake_img, fake_low_res_mask, fine_weights, fine_depth = gen(pose_to_camera, pose_to_world,
-                                                                        bone_length, z, inv_intrinsic)
-
-            background_ratio = gen.background_ratio
-            loss_bone = bone_loss_func(fake_low_res_mask, bone_mask,
-                                       background_ratio) * config.loss.bone_guided_coef
-
-            dis_fake = dis(fake_img, ddp, world_size)
-            gen_optimizer.zero_grad(set_to_none=True)
-            dis_optimizer.zero_grad(set_to_none=True)
-            loss_adv_gen = adv_loss_gen(dis_fake, adv_loss_type, tmp=1)
-            loss_gen = loss_adv_gen + loss_bone
-
-            if config.loss.surface_reg_coef > 0:
-                loss_dist = loss_dist_func(fine_weights, fine_depth)
-                loss_gen += loss_dist * config.loss.surface_reg_coef
-
-            if config.loss.tri_plane_reg_coef > 0:
-                loss_triplane = gen.nerf.buffers_tensors["tri_plane_feature"].square().mean()
-                loss_gen += loss_triplane * config.loss.tri_plane_reg_coef
-
-            if config.loss.tri_plane_mask_reg_coef > 0:
-                mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].clamp_min(-5)
-                loss_triplane_mask = mask.mean() + mask.var(dim=0).mean() * 100
-                # loss_triplane_mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].var(dim=0).mean()
-                loss_gen += loss_triplane_mask * config.loss.tri_plane_mask_reg_coef
-
-            if rank == 0:
-                if iter % 100 == 0:
-                    print(iter)
-                    write(iter, loss_adv_gen, "adv_loss_gen", writer)
-                    write(iter, loss_bone, "bone_loss", writer)
-                    if config.loss.surface_reg_coef > 0:
-                        write(iter, loss_dist, "loss_dist", writer)
-
-            if iter + 1 > config.start_gen_training:
-                loss_gen.backward()
-                gen_optimizer.step()
-            else:
-                loss_gen.backward()
-
-            # torch.cuda.empty_cache()
-
-            # update discriminator
-            gen_optimizer.zero_grad(set_to_none=True)
-            dis_optimizer.zero_grad(set_to_none=True)
-            dis.requires_grad_(True)
-            dis_fake = dis(fake_img.detach(), ddp, world_size)
-            dis_real = dis(real_img, ddp, world_size)
-
-            loss_dis = adv_loss_dis(dis_real, dis_fake, adv_loss_type)
-            if rank == 0:
-                if iter % 100 == 0:
-                    write(iter, loss_dis, "adv_loss_dis", writer)
-
-            loss_dis.backward()
-            dis_optimizer.step()
-
-            if iter % 16 == 0:
-                gen_optimizer.zero_grad(set_to_none=True)
-                dis_optimizer.zero_grad(set_to_none=True)
-                real_img.requires_grad = True
-
-                # mix_ratio = torch.rand(real_img.shape[0], device=real_img.device)[:, None, None, None]
-                # mixed_img = real_img * mix_ratio + fake_img.detach() * (1 - mix_ratio)
-                mixed_img = real_img
-
-                dis_real = dis(mixed_img, ddp, world_size)
-                r1_loss = d_r1_loss(dis_real, mixed_img)
-                if rank == 0:
-                    write(iter, r1_loss, "r1_reg", writer)
-
-                (1 / 2 * r1_loss * 16 * r1_loss_coef + 0 * dis_real[
-                    0]).backward()  # 0 * dis_real[0] avoids zero grad
-                dis_optimizer.step()
-                torch.cuda.empty_cache()
+            fake_img = train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length, inv_intrinsic,
+                                  bone_loss_func, bone_mask, dis, ddp, world_size, gen_optimizer, dis_optimizer,
+                                  adv_loss_type, rank, writer, real_img, r1_loss_coef)
 
             if rank == 0:
                 if iter == 10:
