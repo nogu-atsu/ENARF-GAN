@@ -66,13 +66,21 @@ class HumanDatasetBase(Dataset):
     def __getitem__(self, i):
         i = i % len(self.imgs)
 
+        return_dict = {}
+
         img = self.get_image(i)
+
+        if img.shape[0] == 4:  # last channel is mask
+            mask = img[3]
+            img = img[:3]
+            return_dict["mask"] = mask
 
         img = self.preprocess_img(img)
         if not self.return_bone_params:
             if random.random() > 0.5:
                 img = img[:, :, ::-1].copy()  # flip
-        return_dict = {"img": img, "idx": self.data_idx[i]}
+
+        return_dict.update({"img": img, "idx": self.data_idx[i]})
 
         if self.return_bone_params:
             pose_to_camera = self.pose_to_camera[i].copy()
@@ -257,6 +265,7 @@ class HumanDataset(HumanDatasetBase):
             camera_translation = data_dict["camera_translation"]
             smpl_pose = data_dict["smpl_pose"]
 
+            self.camera_rotation = camera_rotation
             self.intrinsics = camera_intrinsic
             self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
             self.pose_to_world = smpl_pose
@@ -280,6 +289,16 @@ class HumanDataset(HumanDatasetBase):
     def preprocess_img(self, img):
         img = (img / 127.5 - 1).astype("float32")  # 3 x 128 x 128
         return img
+
+
+class SSODataset(HumanDataset):
+    def __getitem__(self, i):
+        return_dict = super(SSODataset, self).__getitem__(i)
+        i = i % len(self.imgs)
+        n_frames = self.config.n_frames
+        return_dict["frame_id"] = i % n_frames
+        return_dict["frame_time"] = (i % n_frames) / n_frames * 2 - 1  # [-1, 1]
+        return_dict["camera_rotation"] = self.camera_rotation[i].astype("float32")
 
 
 class THUmanPoseDataset(Dataset):
