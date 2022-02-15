@@ -8,6 +8,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+import kornia
 from stylegan_op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
 
 
@@ -655,6 +656,8 @@ class Generator(nn.Module):
 
         self.n_latent = self.log_size * 2 - 2
 
+        self.cropper = kornia.augmentation.RandomCrop((self.size, self.size), resample='NEAREST')
+
     def make_noise(self):
         device = self.input.input.device
 
@@ -746,8 +749,7 @@ class Generator(nn.Module):
 
         if self.crop_background:
             if self.training:
-                crop_loc = np.random.randint(0, self.size, image.shape[0])
-                image = torch.stack([im[:, :, cl:cl + self.size] for im, cl in zip(image, crop_loc)])
+                image = self.cropper(image)
             else:
                 image = image[:, :, :, self.size // 2: self.size * 3 // 2]
         if return_latents:
