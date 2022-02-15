@@ -34,6 +34,7 @@ encoder_params:
   transformer_n_head: 4
   num_encoder_layers: 2
   num_decoder_layers: 2
+  n_positional_encoding_freq: 6
 
 generator_params:
 #  no_nerf_bn: True
@@ -44,6 +45,7 @@ generator_params:
 #  z_bg_dim: 0
 #  use_nerf: True
   bg_activation:
+  use_style_nerf: False
   nerf_params:
     final_activation: tanh
     hidden_size: 32  # hidden size of NeRF
