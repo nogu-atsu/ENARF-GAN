@@ -78,6 +78,8 @@ generator_params:
     # tri-plane model
     multiply_density_with_triplane_wieght: False
     clamp_mask: False
+    constant_triplane: False
+    constant_trimask: False  # only tri-plane mask is constant
 
 discriminator_params:
   minibatch_std: True
