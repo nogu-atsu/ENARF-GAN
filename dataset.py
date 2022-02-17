@@ -274,6 +274,14 @@ class HumanDataset(HumanDatasetBase):
             extrinsic[:, :3, 3:] = camera_translation
             self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
 
+            # load canonical pose
+            canonical_pose_path = f"smpl_data/male_canonical.npy"
+            if os.path.exists(canonical_pose_path):
+                self.canonical_pose = np.load(canonical_pose_path)
+
+            if "frame_id" in data_dict:
+                self.frame_id = data_dict["frame_id"]
+
     def get_intrinsic(self, i):
         if self.focal_length is None:
             return self.intrinsics[i]
@@ -296,9 +304,10 @@ class SSODataset(HumanDataset):
         return_dict = super(SSODataset, self).__getitem__(i)
         i = i % len(self.imgs)
         n_frames = self.config.n_frames
-        return_dict["frame_id"] = i % n_frames
-        return_dict["frame_time"] = (i % n_frames) / n_frames * 2 - 1  # [-1, 1]
+        return_dict["frame_id"] = self.frame_id[i]
+        return_dict["frame_time"] = min(self.frame_id[i] / n_frames, 1)  # [0, 1]
         return_dict["camera_rotation"] = self.camera_rotation[i].astype("float32")
+        return return_dict
 
 
 class THUmanPoseDataset(Dataset):
