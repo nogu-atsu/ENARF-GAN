@@ -738,79 +738,92 @@ class TriPlaneNeRF(StyleNeRF):
                               bone_length: torch.tensor = None, near_plane: float = 0.3, far_plane: float = 5,
                               Nc: int = 64, Nf: int = 128, render_scale: float = 1,
                               camera_pose: Optional[torch.Tensor] = None
-                              ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                              ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor],
+                                         Optional[torch.Tensor], Optional[torch.Tensor]]:
         batchsize, _, _, n = image_coord.shape
         num_bone = self.num_bone
         with torch.no_grad():
-            (depth_min, depth_max, ray_direction) = self.decide_frustrum_range(num_bone, image_coord, pose_to_camera,
-                                                                               inv_intrinsics, near_plane,
-                                                                               far_plane, return_camera_coord=True)
+            (depth_min, depth_max,
+             ray_direction, ray_validity) = self.decide_frustrum_range(num_bone, image_coord,
+                                                                       pose_to_camera,
+                                                                       inv_intrinsics, near_plane,
+                                                                       far_plane, return_camera_coord=True)
 
-            if self.view_dependent:
-                ray_direction_in_world = F.normalize(ray_direction, dim=1)
-                ray_direction_in_world = torch.matmul(camera_pose.permute(0, 2, 1), ray_direction_in_world)
+            if batchsize == 1:  # remove invalid rays
+                depth_min = depth_min[:, :, :, ray_validity[0, 0, 0]]
+                depth_max = depth_max[:, :, :, ray_validity[0, 0, 0]]
+                ray_direction = ray_direction[:, :, ray_validity[0, 0, 0]]
+
+            if depth_min.shape[-1] > 0:
+                n = depth_min.shape[-1]
+                if self.view_dependent:
+                    ray_direction_in_world = F.normalize(ray_direction, dim=1)
+                    ray_direction_in_world = torch.matmul(camera_pose.permute(0, 2, 1), ray_direction_in_world)
+                else:
+                    ray_direction_in_world = None
+
+                depth_min = depth_min.squeeze(1)
+                depth_max = depth_max.squeeze(1)
+                start = depth_min * ray_direction  # (B, 3, n)
+                end = depth_max * ray_direction  # (B, 3, n)
+                # coarse ray sampling
+                bins = torch.linspace(0, 1, Nc + 1, dtype=torch.float, device="cuda").reshape(1, 1, 1, Nc + 1)
+                coarse_depth = (depth_min.unsqueeze(-1) * (1 - bins) +
+                                depth_max.unsqueeze(-1) * bins)  # (B, 1, n, Nc + 1)
+
+                coarse_points = start.unsqueeze(-1) * (1 - bins) + end.unsqueeze(-1) * bins  # (B, 3, n, (Nc+1))
+                coarse_points = (coarse_points[:, :, :, 1:] + coarse_points[:, :, :, :-1]) / 2
+                coarse_points = coarse_points.reshape(batchsize, 3, -1)
+
+                local_coarse_points, canonical_coarse_points = self.to_local_and_canonical(coarse_points,
+                                                                                           pose_to_camera,
+                                                                                           bone_length)
+                # coarse density
+                coarse_density = self.calc_color_and_density(local_coarse_points, canonical_coarse_points,
+                                                             tri_plane_feature, z_rend, bone_length,
+                                                             mode="weight_feature",
+                                                             ray_direction=None)[0]  # B x groups x n*Nc
+
+                Np = coarse_depth.shape[-1]  # Nc or Nc + 1
+                # calculate weight for fine sampling
+                coarse_density = coarse_density.reshape(batchsize, 1, -1, Nc)[:, :, :, :Np - 1]
+                # # delta = distance between adjacent samples
+                delta = coarse_depth[:, :, :, 1:] - coarse_depth[:, :, :, :-1]  # B x 1 x n x Np - 1
+
+                density_delta = coarse_density * delta * render_scale
+                T_i = torch.exp(-(torch.cumsum(density_delta, dim=3) - density_delta))
+                weights = T_i * (1 - torch.exp(-density_delta))  # B x 1 x n x Np-1
+                weights = weights.reshape(-1, Np - 1)
+
+                # fine ray sampling
+                weights = F.pad(weights, (1, 1, 0, 0))
+                weights = (torch.maximum(weights[:, :-2], weights[:, 1:-1]) +
+                           torch.maximum(weights[:, 1:-1], weights[:, 2:])) / 2 + 0.01
+                bins = (torch.multinomial(weights,
+                                          Nf, replacement=True).reshape(batchsize, 1, -1, Nf).float() / Nc +
+                        torch.cuda.FloatTensor(batchsize, 1, n, Nf).uniform_() / Nc)
+
+                # sort points
+                bins = torch.sort(bins, dim=-1)[0]
+                fine_depth = depth_min.unsqueeze(3) * (1 - bins) + depth_max.unsqueeze(3) * bins  # (B, 1, n, Nf)
+
+                fine_points = start.unsqueeze(3) * (1 - bins) + end.unsqueeze(3) * bins  # (B, 3, n, Nf)
+
+                fine_points = fine_points.reshape(batchsize, 3, -1)
+
+                if not self.training:
+                    self.temporal_state.update({
+                        "coarse_density": coarse_density,
+                        "coarse_T_i": T_i,
+                        "coarse_weights": weights,
+                        "coarse_depth": coarse_depth,
+                        "fine_depth": fine_depth,
+                        "fine_points": fine_points,
+                        "near_plane": near_plane,
+                        "far_plane": far_plane
+                    })
             else:
-                ray_direction_in_world = None
-
-            depth_min = depth_min.squeeze(1)
-            depth_max = depth_max.squeeze(1)
-            start = depth_min * ray_direction  # (B, 3, n)
-            end = depth_max * ray_direction  # (B, 3, n)
-            # coarse ray sampling
-            bins = torch.linspace(0, 1, Nc + 1, dtype=torch.float, device="cuda").reshape(1, 1, 1, Nc + 1)
-            coarse_depth = (depth_min.unsqueeze(-1) * (1 - bins) +
-                            depth_max.unsqueeze(-1) * bins)  # (B, 1, n, Nc + 1)
-
-            coarse_points = start.unsqueeze(-1) * (1 - bins) + end.unsqueeze(-1) * bins  # (B, 3, n, (Nc+1))
-            coarse_points = (coarse_points[:, :, :, 1:] + coarse_points[:, :, :, :-1]) / 2
-            coarse_points = coarse_points.reshape(batchsize, 3, -1)
-
-            local_coarse_points, canonical_coarse_points = self.to_local_and_canonical(coarse_points, pose_to_camera,
-                                                                                       bone_length)
-            # coarse density
-            coarse_density = self.calc_color_and_density(local_coarse_points, canonical_coarse_points,
-                                                         tri_plane_feature, z_rend, bone_length,
-                                                         mode="weight_feature",
-                                                         ray_direction=None)[0]  # B x groups x n*Nc
-
-            Np = coarse_depth.shape[-1]  # Nc or Nc + 1
-            # calculate weight for fine sampling
-            coarse_density = coarse_density.reshape(batchsize, 1, n, Nc)[:, :, :, :Np - 1]
-            # # delta = distance between adjacent samples
-            delta = coarse_depth[:, :, :, 1:] - coarse_depth[:, :, :, :-1]  # B x 1 x n x Np - 1
-
-            density_delta = coarse_density * delta * render_scale
-            T_i = torch.exp(-(torch.cumsum(density_delta, dim=3) - density_delta))
-            weights = T_i * (1 - torch.exp(-density_delta))  # B x 1 x n x Np-1
-            weights = weights.reshape(batchsize * n, Np - 1)
-
-            # fine ray sampling
-            weights = F.pad(weights, (1, 1, 0, 0))
-            weights = (torch.maximum(weights[:, :-2], weights[:, 1:-1]) +
-                       torch.maximum(weights[:, 1:-1], weights[:, 2:])) / 2 + 0.01
-            bins = (torch.multinomial(weights,
-                                      Nf, replacement=True).reshape(batchsize, 1, n, Nf).float() / Nc +
-                    torch.cuda.FloatTensor(batchsize, 1, n, Nf).uniform_() / Nc)
-
-            # sort points
-            bins = torch.sort(bins, dim=-1)[0]
-            fine_depth = depth_min.unsqueeze(3) * (1 - bins) + depth_max.unsqueeze(3) * bins  # (B, 1, n, Nf)
-
-            fine_points = start.unsqueeze(3) * (1 - bins) + end.unsqueeze(3) * bins  # (B, 3, n, Nf)
-
-            fine_points = fine_points.reshape(batchsize, 3, -1)
-
-        if not self.training:
-            self.temporal_state.update({
-                "coarse_density": coarse_density,
-                "coarse_T_i": T_i,
-                "coarse_weights": weights,
-                "coarse_depth": coarse_depth,
-                "fine_depth": fine_depth,
-                "fine_points": fine_points,
-                "near_plane": near_plane,
-                "far_plane": far_plane
-            })
+                return (None,) * 4
 
         if pose_to_camera.requires_grad:
             raise NotImplementedError("Currently pose should not be differentiable")
@@ -819,6 +832,7 @@ class TriPlaneNeRF(StyleNeRF):
             fine_depth,  # (B, 1, n, Nf)
             fine_points,  # (B, 3, n*Nf),
             ray_direction_in_world,  # (B, 3, n) or None
+            ray_validity,  # (B, 1, 1, n)
         )
 
     def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, tri_plane_feature: torch.Tensor,
@@ -909,6 +923,7 @@ class TriPlaneNeRF(StyleNeRF):
         # camera_intrinsics: 3 x 3
 
         batchsize, num_bone, _, n = image_coord.shape
+        device = image_coord.device
 
         if self.origin_location == "center":
             pose_to_camera = torch.cat([pose_to_camera[:, 1:, :, :3],
@@ -922,80 +937,100 @@ class TriPlaneNeRF(StyleNeRF):
             tri_plane_feature = self.compute_tri_plane_feature(z, bone_length)
 
         (fine_depth, fine_points,
-         ray_direction_in_world) = self.coarse_to_fine_sample(image_coord, pose_to_camera,
-                                                              inv_intrinsics,
-                                                              tri_plane_feature=tri_plane_feature,
-                                                              z_rend=z_rend,
-                                                              bone_length=bone_length,
-                                                              near_plane=near_plane, Nc=Nc,
-                                                              Nf=Nf,
-                                                              render_scale=render_scale,
-                                                              camera_pose=camera_pose)
-        # fine density & color # B x groups x 1 x n*(Nc+Nf), B x groups x 3 x n*(Nc+Nf)
-        if semantic_map and self.config.mask_input:
-            self.save_mask = True
+         ray_direction_in_world,
+         ray_validity) = self.coarse_to_fine_sample(image_coord, pose_to_camera,
+                                                    inv_intrinsics,
+                                                    tri_plane_feature=tri_plane_feature,
+                                                    z_rend=z_rend,
+                                                    bone_length=bone_length,
+                                                    near_plane=near_plane, Nc=Nc,
+                                                    Nf=Nf,
+                                                    render_scale=render_scale,
+                                                    camera_pose=camera_pose)
+        if fine_depth is not None:
+            # fine density & color # B x groups x 1 x n*(Nc+Nf), B x groups x 3 x n*(Nc+Nf)
+            if semantic_map and self.config.mask_input:
+                self.save_mask = True
 
-        local_fine_points, canonical_fine_points = self.to_local_and_canonical(fine_points, pose_to_camera, bone_length)
+            local_fine_points, canonical_fine_points = self.to_local_and_canonical(fine_points, pose_to_camera,
+                                                                                   bone_length)
+            fine_density, fine_color = self.calc_color_and_density(local_fine_points, canonical_fine_points,
+                                                                   tri_plane_feature, z_rend,
+                                                                   bone_length, mode="weight_feature",
+                                                                   ray_direction=ray_direction_in_world)
+            Np = fine_depth.shape[-1]  # Nf
 
-        fine_density, fine_color = self.calc_color_and_density(local_fine_points, canonical_fine_points,
-                                                               tri_plane_feature, z_rend,
-                                                               bone_length, mode="weight_feature",
-                                                               ray_direction=ray_direction_in_world)
-        Np = fine_depth.shape[-1]  # Nf
+            if return_intermediate:
+                intermediate_output = (fine_points, fine_density)
 
-        if return_intermediate:
-            intermediate_output = (fine_points, fine_density)
+            if semantic_map and self.config.mask_input:
+                self.save_mask = False
 
-        if semantic_map and self.config.mask_input:
-            self.save_mask = False
+            # semantic map
+            if semantic_map:
+                assert False, "semantic map rendering will be implemented later"
+                bone_idx = torch.arange(num_bone).cuda()
+                seg_color = torch.stack([bone_idx // 9, (bone_idx // 3) % 3, bone_idx % 3], dim=1) - 1  # num_bone x 3
+                seg_color[::2] = seg_color.flip(dims=(0,))[1 - num_bone % 2::2]  # num_bone x 3
+                fine_color = seg_color[self.mask_prob.reshape(-1)]
+                fine_color = fine_color.reshape(batchsize, 1, -1, 3).permute(0, 1, 3, 2)
+                fine_color = fine_color.reshape(batchsize, 1, 3, n, -1)[:, :, :, :, :Np - 1]
+            else:
+                fine_color = fine_color.reshape(batchsize, 3, -1, Np)[:, :, :, :Np - 1]
 
-        # semantic map
-        if semantic_map:
-            assert False, "semantic map rendering will be implemented later"
-            bone_idx = torch.arange(num_bone).cuda()
-            seg_color = torch.stack([bone_idx // 9, (bone_idx // 3) % 3, bone_idx % 3], dim=1) - 1  # num_bone x 3
-            seg_color[::2] = seg_color.flip(dims=(0,))[1 - num_bone % 2::2]  # num_bone x 3
-            fine_color = seg_color[self.mask_prob.reshape(-1)]
-            fine_color = fine_color.reshape(batchsize, 1, -1, 3).permute(0, 1, 3, 2)
-            fine_color = fine_color.reshape(batchsize, 1, 3, n, -1)[:, :, :, :, :Np - 1]
+            fine_density = fine_density.reshape(batchsize, 1, -1, Np)[:, :, :, :Np - 1]
+
+            sum_fine_density = fine_density
+
+            # if thres > 0:
+            #     # density = inf if density exceeds thres
+            #     sum_fine_density = (sum_fine_density > thres) * 100000
+
+            delta = fine_depth[:, :, :, 1:] - fine_depth[:, :, :, :-1]  # B x 1 x n x Np-1
+            sum_density_delta: torch.Tensor = sum_fine_density * delta * render_scale  # B x 1 x n x Np-1
+
+            T_i = torch.exp(-(torch.cumsum(sum_density_delta, dim=3) - sum_density_delta))
+            weights = T_i * (1 - torch.exp(-sum_density_delta))  # B x 1 x n x Nc+Nf-1
+
+            if not hasattr(self, "buffers_tensors"):
+                self.buffers_tensors = {}
+            self.buffers_tensors["fine_weights"] = weights
+            self.buffers_tensors["fine_depth"] = fine_depth
+            self.buffers_tensors["tri_plane_feature"] = tri_plane_feature
+
+            if not self.training:
+                self.temporal_state.update({
+                    "canonical_fine_points": canonical_fine_points,
+                    "in_cube": in_cube(local_fine_points),
+                    "tri_plane_feature": tri_plane_feature,
+                })
+                self.temporal_state["fine_density"] = fine_density
+                self.temporal_state["fine_T_i"] = T_i
+                self.temporal_state["fine_cum_weight"] = torch.cumsum(weights, dim=-1)
+
+            fine_depth = fine_depth.reshape(batchsize, 1, -1, Np)[:, :, :, :-1]
+
+            rendered_color = torch.sum(weights * fine_color, dim=3).squeeze(1)  # B x 3 x n
+            rendered_mask = torch.sum(weights, dim=3).reshape(batchsize, -1)  # B x n
+            rendered_disparity = torch.sum(weights * 1 / fine_depth, dim=3).reshape(batchsize, -1)  # B x n
+
+            if batchsize == 1:  # revert invalid rays
+                def revert_invalid_rays(color, mask, disparity):
+                    _color = torch.zeros(batchsize, 3, n, device=device)
+                    _color[:, :, ray_validity[0, 0, 0]] = color
+                    _mask = torch.zeros(batchsize, n, device=device)
+                    _mask[:, ray_validity[0, 0, 0]] = mask
+                    _disparity = torch.zeros(batchsize, n, device=device)
+                    _disparity[:, ray_validity[0, 0, 0]] = disparity
+                    return _color, _mask, _disparity
+
+                rendered_color, rendered_mask, rendered_disparity = revert_invalid_rays(rendered_color,
+                                                                                        rendered_mask,
+                                                                                        rendered_disparity)
         else:
-            fine_color = fine_color.reshape(batchsize, 3, n, -1)[:, :, :, :Np - 1]
-
-        fine_density = fine_density.reshape(batchsize, 1, n, -1)[:, :, :, :Np - 1]
-
-        sum_fine_density = fine_density
-
-        # if thres > 0:
-        #     # density = inf if density exceeds thres
-        #     sum_fine_density = (sum_fine_density > thres) * 100000
-
-        delta = fine_depth[:, :, :, 1:] - fine_depth[:, :, :, :-1]  # B x 1 x n x Np-1
-        sum_density_delta: torch.Tensor = sum_fine_density * delta * render_scale  # B x 1 x n x Np-1
-
-        T_i = torch.exp(-(torch.cumsum(sum_density_delta, dim=3) - sum_density_delta))
-        weights = T_i * (1 - torch.exp(-sum_density_delta))  # B x 1 x n x Nc+Nf-1
-
-        if not hasattr(self, "buffers_tensors"):
-            self.buffers_tensors = {}
-        self.buffers_tensors["fine_weights"] = weights
-        self.buffers_tensors["fine_depth"] = fine_depth
-        self.buffers_tensors["tri_plane_feature"] = tri_plane_feature
-
-        if not self.training:
-            self.temporal_state.update({
-                "canonical_fine_points": canonical_fine_points,
-                "in_cube": in_cube(local_fine_points),
-                "tri_plane_feature": tri_plane_feature,
-            })
-            self.temporal_state["fine_density"] = fine_density
-            self.temporal_state["fine_T_i"] = T_i
-            self.temporal_state["fine_cum_weight"] = torch.cumsum(weights, dim=-1)
-
-        fine_depth = fine_depth.reshape(batchsize, 1, n, -1)[:, :, :, :-1]
-
-        rendered_color = torch.sum(weights * fine_color, dim=3).squeeze(1)  # B x 3 x n
-        rendered_mask = torch.sum(weights, dim=3).reshape(batchsize, n)  # B x n
-        rendered_disparity = torch.sum(weights * 1 / fine_depth, dim=3).reshape(batchsize, n)  # B x n
+            rendered_color = torch.zeros(batchsize, 3, n, device=device)
+            rendered_mask = torch.zeros(batchsize, n, device=device)
+            rendered_disparity = torch.zeros(batchsize, n, device=device)
 
         if return_intermediate:
             return rendered_color, rendered_mask, rendered_disparity, intermediate_output
