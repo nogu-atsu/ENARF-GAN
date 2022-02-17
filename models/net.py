@@ -665,7 +665,11 @@ class SSOTriNARFGenerator(nn.Module):
 
         self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=20, num_bone=num_bone,
                                  bone_length=True,
-                                 parent=parent_id, num_bone_param=num_bone_param)
+                                 parent=parent_id, num_bone_param=num_bone_param,
+                                 view_dependent=True)
+
+    def register_canonical_pose(self, pose: np.ndarray):
+        self.nerf.register_canonical_pose(pose)
 
     @property
     def memory_cost(self):
@@ -683,7 +687,7 @@ class SSOTriNARFGenerator(nn.Module):
         :param num_frequency: L in nerf paper
         :return:(B, n_freq * 2)
         """
-        x = x[:, None] * 2 ** torch.arange(num_frequency, device=x.device)
+        x = x[:, None] * 2 ** torch.arange(num_frequency, device=x.device) * np.pi
         encoded = torch.cat([torch.cos(x), torch.sin(x)], dim=1)
         return encoded
 
@@ -703,9 +707,9 @@ class SSOTriNARFGenerator(nn.Module):
         assert bone_length is not None and pose_to_camera is not None
         assert isinstance(inv_intrinsics, torch.Tensor)
         batchsize = pose_to_camera.shape[0]
-        ray_batchsize = self.config.ray_batchsize  # TODO: add this to config
+        ray_batchsize = self.config.ray_batchsize
 
-        grid, img_coord = self.ray_sampler(mask, ray_batchsize, batchsize)
+        grid, img_coord = self.ray_sampler(mask, ray_batchsize)
 
         # sparse rendering
         z1 = z2 = self.positional_encoding(frame_time, num_frequency=10)
@@ -713,7 +717,7 @@ class SSOTriNARFGenerator(nn.Module):
         # TODO: randomly replace z1 during training
         rendered_color, rendered_mask = self.nerf(batchsize, img_coord,
                                                   pose_to_camera, inv_intrinsics, z1, z2,
-                                                  bone_length, thres=0.0,
+                                                  bone_length,
                                                   Nc=self.config.nerf_params.Nc,
                                                   Nf=self.config.nerf_params.Nf,
                                                   return_intermediate=False,
@@ -724,3 +728,25 @@ class SSOTriNARFGenerator(nn.Module):
             background = -1
         rendered_color = rendered_color + background * (1 - rendered_mask[:, None])
         return rendered_color, rendered_mask, grid
+
+    def render_entire_img(self, pose_to_camera, inv_intrinsics, frame_time, bone_length,
+                          camera_pose=None, render_size=128,
+                          semantic_map=False, use_normalized_intrinsics=False):
+        """
+
+        :param pose_to_camera:
+        :param inv_intrinsics:
+        :param frame_time:
+        :param bone_length:
+        :param camera_pose:
+        :param render_size:
+        :param semantic_map:
+        :param use_normalized_intrinsics:
+        :return:
+        """
+        # sparse rendering
+        z1 = z2 = self.positional_encoding(frame_time, num_frequency=10)
+        return self.nerf.render_entire_img(pose_to_camera, inv_intrinsics, z1, z2, bone_length,
+                                           camera_pose, render_size, self.config.nerf_params.Nc,
+                                           self.config.nerf_params.Nf, semantic_map,
+                                           use_normalized_intrinsics)
