@@ -1,7 +1,7 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/GAN/20220216_wild_const_trimask_pretrained.yml
+out: THUman/GAN/20220218_wild_const_trimask_pretrained
 
 dataset:
   name: human_tight
@@ -46,7 +46,8 @@ loss:
   suppress_small: False
   r1_loss_coef: 10
   tri_plane_reg_coef: 0.0
-  tri_plane_mask_reg_coef: 0.03
+  tri_plane_mask_reg_coef: 0.1
+  pseudo_mask_reg_coef: 0.1
 
 consistency_regularization: False
 replace: True
@@ -59,4 +60,4 @@ nerf_only: True
 num_iter: 800000
 
 # snapshots
-#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220204_wild_triplane/snapshot_200000.pth
+resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220216_wild_const_trimask_pretrained.yml/snapshot_latest.pth
