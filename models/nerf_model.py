@@ -443,7 +443,7 @@ class StyleNeRF(NeRF):
         raise NotImplementedError()
 
 
-class TriPlaneNeRF(StyleNeRF):
+class TriPlaneNeRF(NeRF):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=True, parent=None, num_bone_param=None, view_dependent: bool = False):
         super(NeRF, self).__init__()
