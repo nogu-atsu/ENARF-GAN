@@ -6,6 +6,7 @@ import warnings
 import tensorboardX as tbx
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
@@ -136,6 +137,39 @@ def train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length,
         loss_triplane_mask = mask.mean() + mask.var(dim=0).mean() * 100
         # loss_triplane_mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].var(dim=0).mean()
         loss_gen += loss_triplane_mask * config.loss.tri_plane_mask_reg_coef
+
+    if config.loss.pseudo_mask_reg_coef > 0:
+        fine_density = gen.nerf.buffers_tensors["fine_density"].detach()  # (B, 1, n)
+        mask_weight = gen.nerf.buffers_tensors["mask_weight"]  # (B, n_bone, n)
+        mask_prob = mask_weight.square().sum(dim=1) / (mask_weight.sum(dim=1) + 1e-2)
+        pseudo_label = fine_density.squeeze(1) > 5
+        loss_pseudo_mask = F.binary_cross_entropy(mask_prob, pseudo_label.float())
+        loss_gen += loss_pseudo_mask * config.loss.pseudo_mask_reg_coef
+
+    if config.loss.mask_derivative_reg_coef > 0:
+        mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:]
+        device = mask.device
+        dx = F.conv2d(mask.reshape(-1, 1, 256, 256), torch.tensor([[-1, 0, 1],
+                                                                   [-2, 0, 2],
+                                                                   [-1, 0, 1]], dtype=torch.float32,
+                                                                  device=device)[None, None])
+        dy = F.conv2d(mask.reshape(-1, 1, 256, 256), torch.tensor([[-1, -2, -1],
+                                                                   [0, 0, 0],
+                                                                   [1, 2, 1]], dtype=torch.float32,
+                                                                  device=device)[None, None])
+        dx = dx.reshape(batchsize, -1, 3, 1, 254, 254)
+        dy = dy.reshape(batchsize, -1, 3, 1, 254, 254)
+        dxy = torch.cat([dx, dy], dim=3)
+        dxy = F.normalize(dxy, dim=3)  # (B, num_bone, 3, 2, 254, 254)
+
+        joint_location = gen.nerf.canonical_pose[:, [0, 1, 1, 2, 2, 0], 3].reshape(-1, 3, 2)  # (num_bone, 3, 2)
+        arange = torch.arange(1, 255, device=device)
+        pixel_location = (torch.stack(torch.meshgrid(arange, arange)[::-1]) + 0.5) / 128 - 1  # (2, 254, 254)
+        xy = pixel_location - joint_location[:, :, :, None, None]
+        xy = F.normalize(xy, dim=2)  # (num_bone, 3, 2, 254, 254)
+
+        loss_mask_derivative_reg = (dxy * xy).clamp_min(-0.8).sum(dim=3).mean()
+        loss_gen += loss_mask_derivative_reg * config.loss.mask_derivative_reg_coef
 
     if rank == 0:
         if iter % 100 == 0:

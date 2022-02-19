@@ -503,9 +503,11 @@ class TriPlaneNeRF(NeRF):
             self.tri_plane_gen = lambda z, *args, **kwargs: self.tri_plane.expand(z.shape[0], -1, -1, -1)
         elif self.config.constant_trimask:
             self.generator = self.prepare_stylegan2(self.feat_dim * 3)
-            self.tri_plane = nn.Parameter(torch.zeros(1, self.num_bone * 3, 256, 256))
+            lr_mul = self.config.constant_trimask_lr_mul
+            self.tri_plane = nn.Parameter(torch.zeros(1, self.num_bone * 3, 256, 256) / lr_mul)
             self.tri_plane_gen = lambda z, *args, **kwargs: torch.cat(
-                [self.generator(z, *args, **kwargs), self.tri_plane.expand(z.shape[0], -1, -1, -1)], dim=1)
+                [self.generator(z, *args, **kwargs),
+                 self.tri_plane.expand(z.shape[0], -1, -1, -1) * lr_mul], dim=1)
         elif self.config.deformation_field:
             self.tri_plane = nn.Parameter(torch.zeros(1, 32 * 3 + self.num_bone * 3, 256, 256))
             self.flow_generator = self.prepare_stylegan2(2 * 3)
@@ -867,6 +869,11 @@ class TriPlaneNeRF(NeRF):
             self.temporal_state.update({
                 "weight": weight,
             })
+        if weight.requires_grad:
+            if not hasattr(self, "buffers_tensors"):
+                self.buffers_tensors = {}
+
+            self.buffers_tensors["mask_weight"] = weight
         # canonical position based
         if mode == "weight_position":
             weighted_position_validity = position_validity.any(dim=1)[:, None]
@@ -958,6 +965,11 @@ class TriPlaneNeRF(NeRF):
                                                                    tri_plane_feature, z_rend,
                                                                    bone_length, mode="weight_feature",
                                                                    ray_direction=ray_direction_in_world)
+
+            if not hasattr(self, "buffers_tensors"):
+                self.buffers_tensors = {}
+            self.buffers_tensors["fine_density"] = fine_density
+
             Np = fine_depth.shape[-1]  # Nf
 
             if return_intermediate:
@@ -992,8 +1004,6 @@ class TriPlaneNeRF(NeRF):
             T_i = torch.exp(-(torch.cumsum(sum_density_delta, dim=3) - sum_density_delta))
             weights = T_i * (1 - torch.exp(-sum_density_delta))  # B x 1 x n x Nc+Nf-1
 
-            if not hasattr(self, "buffers_tensors"):
-                self.buffers_tensors = {}
             self.buffers_tensors["fine_weights"] = weights
             self.buffers_tensors["fine_depth"] = fine_depth
             self.buffers_tensors["tri_plane_feature"] = tri_plane_feature

@@ -80,6 +80,8 @@ generator_params:
     clamp_mask: False
     constant_triplane: False
     constant_trimask: False  # only tri-plane mask is constant
+    constant_trimask_lr_mul: 1  # learning rate scale of tri-plane mask
+    deformation_field: False
 
 discriminator_params:
   minibatch_std: True
@@ -98,6 +100,8 @@ loss:
   surface_reg_coef: 0
   tri_plane_reg_coef: 0
   tri_plane_mask_reg_coef: 0
+  pseudo_mask_reg_coef: 0
+  mask_derivative_reg_coef: 0
 
 consistency_regularization: False
 replace: True
