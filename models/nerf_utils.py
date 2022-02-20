@@ -1,20 +1,24 @@
-import sys
-import warnings
-from typing import Union, List, Tuple, Optional
+from typing import Union, List
 
 import numpy as np
 import torch
-import torch.nn.functional as F
-from torch import nn
 
-from NARF.models.activation import MyReLU
-from NARF.models.model_utils import in_cube
-from NARF.models.nerf_model import NeRF
-from models.stylegan import StyledConv, EqualConv1d
+from models.stylegan import StyledConv
 
 StyledConv1d = lambda in_channel, out_channel, style_dim, groups=1: StyledConv(in_channel, out_channel, 1, style_dim,
                                                                                use_noise=False, conv_1d=True,
                                                                                groups=groups)
+
+
+def in_cube(p: torch.Tensor):
+    # whether the positions are in the cube [-1, 1]^3
+    # :param p: b x groups * 3 x n (n = num_of_ray * points_on_ray)
+    if p.shape[1] == 3:
+        inside = (p.abs() <= 1).all(dim=1, keepdim=True)  # ? x 1 x ???
+        return inside
+    b, _, n = p.shape
+    inside = (p.reshape(b, -1, 3, n).abs() <= 1).all(dim=2)
+    return inside  # b x groups x 1 x n
 
 
 def encode(value: Union[List, torch.tensor], num_frequency: int, num_bone: int):
