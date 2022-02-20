@@ -1,6 +1,6 @@
 import sys
 import warnings
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -39,7 +39,7 @@ class StyledMLP(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers=3, skips=()):
+    def __init__(self, in_dim: int, hidden_dim: int, out_dim: int, num_layers: int = 3, skips: Tuple = ()):
         super(MLP, self).__init__()
         self.skips = skips
         layers = [EqualConv1d(in_dim, hidden_dim, 1)]
@@ -53,7 +53,7 @@ class MLP(nn.Module):
         self.layers = nn.ModuleList(layers)
         self.hidden_dim = hidden_dim
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = x
         for i, l in enumerate(self.layers):
             if i in self.skips:
@@ -856,12 +856,15 @@ class SSONARF(NeRFBase):
 
         # selector
         hidden_dim_for_mask = 10
-        self.mask_linear_p = nn.Conv1d(3 * self.num_frequency_for_position * 2 * self.num_bone,
-                                       hidden_dim_for_mask * self.num_bone, 1, groups=self.num_bone)
-        self.mask_linear = nn.Conv1d(hidden_dim_for_mask * self.num_bone, self.num_bone, 1, groups=self.num_bone)
+        self.selector = nn.Sequential(nn.Conv1d(3 * self.num_frequency_for_position * 2 * self.num_bone,
+                                                hidden_dim_for_mask * self.num_bone, 1, groups=self.num_bone),
+                                      nn.ReLU(inplace=True),
+                                      nn.Conv1d(hidden_dim_for_mask * self.num_bone, self.num_bone, 1,
+                                                groups=self.num_bone),
+                                      nn.Softmax(dim=1))
 
         if self.config.model_type == "dnarf":
-            self.deformation_field = MLP(4 * self.num_frequency_for_position * 2, hidden_size, 3,
+            self.deformation_field = MLP(4 * self.num_frequency_for_position * 2, hidden_size, self.num_bone * 3,
                                          num_layers=8, skips=(4,))
             self.density_mlp = MLP(3 * self.num_frequency_for_position * 2, hidden_size, 3,
                                    num_layers=8, skips=(4,))
@@ -878,30 +881,10 @@ class SSONARF(NeRFBase):
             self.mlp = StyledMLP(self.hidden_size + 3 * nffo * 2, self.hidden_size // 2,
                                  3, style_dim=self.z2_dim)
         else:
-            self.mlp = StyledMLP(self.hidden_size, self.hidden_size // 2, 4, style_dim=self.z2_dim)
+            self.mlp = StyledMLP(self.hidden_size, self.hidden_size // 2, 3, style_dim=self.z2_dim)
 
         self.bce = nn.BCEWithLogitsLoss()
         self.l1 = nn.L1Loss()
-
-    def calc_color_and_density(self, local_pos: torch.Tensor, z: torch.Tensor,
-                               z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str,
-                               ray_direction: Optional[torch.Tensor] = None):
-        """
-        forward func of ImplicitField
-        :param local_pos: local coordinate, (B * n_bone, 3, n) (n = num_of_ray * points_on_ray)
-        :param z:
-        :param z_rend: b x groups x 4 x 4
-        :param bone_length: b x groups x 1
-        :param mode: str
-        :param ray_direction
-        :return: b x groups x 4 x n
-        """
-
-        in_cube_p = in_cube(local_pos)  # (B, n_bone, n)
-
-        density, color = self.backbone(local_pos, in_cube_p, z, z_rend, bone_length, mode, ray_direction)
-        density *= in_cube_p.any(dim=1, keepdim=True)
-        return density, color  # (B, 1, n), (B, 3, n)
 
     @staticmethod
     def to_local(points, pose_to_camera):
@@ -943,18 +926,18 @@ class SSONARF(NeRFBase):
         density *= in_cube_p.any(dim=1, keepdim=True)
         return density, color
 
-    def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, tri_plane_feature: torch.Tensor,
-                 z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str = "weight_feature",
+    def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, z: torch.Tensor,
+                 z_rend: torch.Tensor, bone_length: torch.Tensor,
                  ray_direction: Optional[torch.Tensor] = None):
         """
 
         Args:
-            p: position in canonical coordinate, (B, n_bone, 3, n)
+            p: position in local coordinate, (B, n_bone, 3, n)
             position_validity: bool tensor for validity of p, (B, n_bone, n)
-            tri_plane_feature:
+            z: (B, dim)
             z_rend: (B, dim)
             bone_length: (B, n_bone)
-            mode: "weight_feature" or "weight_position"
+            # mode: "weight_feature" or "weight_position"
             ray_direction: not None if color is view dependent
         Returns:
 
@@ -962,43 +945,30 @@ class SSONARF(NeRFBase):
         # don't support mip-nerf rendering
         assert isinstance(p, torch.Tensor)
         assert bone_length is not None
-        assert mode in ["weight_position", "weight_feature"]
+        # assert mode in ["weight_position", "weight_feature"]
 
-        bs, n_bone, _, n = p.shape
+        # memo
+        # p * local_p -> MLP -> density, color
+        print(p.shape)
+        batchsize, _, _, n = p.shape
+        p = p.reshape(batchsize, self.num_bone * 3, n)
+        encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
+        prob = self.selector(p)
 
-        # Make the invalid position outside the range of -1 to 1 (all invalid positions become 2)
-        masked_position = p * position_validity[:, :, None] + 2 * ~position_validity[:, :, None]
+        encoded_p = encoded_p * torch.repeat_interleave(prob, 3, dim=1)
 
-        weight = self.calc_weight(tri_plane_feature[:, 32 * 3:].reshape(bs * n_bone, 3, 256, 256),
-                                  masked_position, position_validity)  # (bs, n_bone, n)
+        if self.config.model_type == "dnarf":
+            dp = self.deformation_field(encoded_p)  # (B, num_bone * 3, n)
+            p = p + dp
+            encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
 
-        if not self.training:
-            self.temporal_state.update({
-                "weight": weight,
-            })
-        if weight.requires_grad:
-            if not hasattr(self, "buffers_tensors"):
-                self.buffers_tensors = {}
-
-            self.buffers_tensors["mask_weight"] = weight
-        # canonical position based
-        if mode == "weight_position":
-            weighted_position_validity = position_validity.any(dim=1)[:, None]
-            weighted_position = (p * weight[:, :, None]).sum(dim=1)  # (bs, 3, n)
-            # Make the invalid position outside the range of -1 to 1 (all invalid positions become 2)
-            weighted_position = weighted_position * weighted_position_validity + 2 * ~weighted_position_validity
-            feature = self.sample_feature(tri_plane_feature[:, :32 * 3], weighted_position)  # (B, 32, n)
-
-        # concat position based
-        elif mode == "weight_feature":
-            feature = self.sample_weighted_feature_v2(tri_plane_feature[:, :32 * 3], masked_position,
-                                                      weight,
-                                                      position_validity)  # (B, 32, n)
+        if self.config.mmodel_type == "tnarf":
+            feature = self.density_mlp(encoded_p, z)
         else:
-            raise ValueError()
+            feature = self.density_mlp(encoded_p)
 
+        density = self.density_fc(feature, z_rend)  # (B, 1, n)
         if self.view_dependent:
-            density = self.density_fc(feature, z_rend)  # (B, 1, n)
             if ray_direction is None:
                 color = None
             else:
@@ -1007,13 +977,9 @@ class SSONARF(NeRFBase):
                                                         feature.shape[-1] // ray_direction.shape[-1],
                                                         dim=2)
                 color = self.mlp(torch.cat([feature, ray_direction], dim=1), z_rend)  # (B, 3, n)
-                color = torch.tanh(color)
         else:
-            color_density = self.mlp(feature, z_rend)  # (B, 4, n)
-            color, density = color_density[:, :3], color_density[:, 3:]
-            color = torch.tanh(color)
-        if self.config.multiply_density_with_triplane_wieght:
-            density = self.density_activation(density) * (10 * weight.max(dim=1, keepdim=True)[0])
-        else:
-            density = self.density_activation(density) * 10
+            color = self.mlp(feature, z_rend)  # (B, 4, n)
+
+        color = torch.tanh(color)
+        density = self.density_activation(density)
         return density, color
