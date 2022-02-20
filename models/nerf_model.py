@@ -1,6 +1,6 @@
 import sys
 import warnings
-from typing import Union, List, Tuple, Optional
+from typing import Union, List, Optional
 
 import numpy as np
 import torch
@@ -8,11 +8,10 @@ import torch.nn.functional as F
 from torch import nn
 
 from NARF.models.activation import MyReLU
-from NARF.models.model_utils import in_cube
 from NARF.models.nerf_model import NeRF
-from models.stylegan import EqualConv1d
-from models.nerf_utils import StyledConv1d, encode, positional_encoding
 from models.nerf_model_base import NeRFBase
+from models.nerf_utils import StyledConv1d, encode, positional_encoding, in_cube
+from models.stylegan import EqualConv1d
 
 sys.path.append("stylegan2-ada-pytorch")
 import dnnlib
@@ -663,30 +662,6 @@ class TriPlaneNeRF(NeRFBase):
 
         return weight
 
-    def calc_color_and_density(self, local_pos: torch.Tensor, canonical_pos: torch.Tensor,
-                               tri_plane_feature: torch.Tensor,
-                               z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str,
-                               ray_direction: Optional[torch.Tensor] = None):
-        """
-        forward func of ImplicitField
-        :param local_pos: local coordinate, (B * n_bone, 3, n) (n = num_of_ray * points_on_ray)
-        :param canonical_pos: canonical coordinate, (B, n_bone, 3, n) (n = num_of_ray * points_on_ray)
-        :param tri_plane_feature:
-        :param z_rend: b x groups x 4 x 4
-        :param bone_length: b x groups x 1
-        :param mode: str
-        :param ray_direction
-        :return: b x groups x 4 x n
-        """
-
-        in_cube_p = in_cube(local_pos)  # (B, n_bone, n)
-        in_cube_p = in_cube_p * (canonical_pos.abs() < 1).all(dim=2)  # (B, n_bone, n)
-
-        density, color = self.backbone(canonical_pos, in_cube_p, tri_plane_feature, z_rend, bone_length, mode,
-                                       ray_direction)
-        density *= in_cube_p.any(dim=1, keepdim=True)
-        return density, color  # (B, 1, n), (B, 3, n)
-
     def to_local_and_canonical(self, points, pose_to_camera, bone_length):
         """transform points to local and canonical coordinate
 
@@ -729,9 +704,13 @@ class TriPlaneNeRF(NeRFBase):
         :return: density of input positions
         """
         local_points, canonical_points = self.to_local_and_canonical(position, pose_to_camera, bone_length)
-        density, color = self.calc_color_and_density(local_points, canonical_points, z, z_rend,
-                                                     bone_length, mode="weight_feature",
-                                                     ray_direction=ray_direction)  # (B, 1, n*Nc)
+
+        in_cube_p = in_cube(local_points)  # (B, n_bone, n)
+        in_cube_p = in_cube_p * (canonical_points.abs() < 1).all(dim=2)  # (B, n_bone, n)
+        density, color = self.backbone(canonical_points, in_cube_p, z, z_rend, bone_length, "weight_feature",
+                                       ray_direction)
+        density *= in_cube_p.any(dim=1, keepdim=True)
+
         if not self.training:
             self.temporal_state.update({
                 "canonical_fine_points": canonical_points,
@@ -946,8 +925,8 @@ class SSONARF(NeRFBase):
         local_points = local_points.reshape(bs, n_bone * 3, n)
         return local_points
 
-    def calc_density_from_camera_coord(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
-                                       bone_length: torch.Tensor, z, z_rend):
+    def calc_density_and_color_from_camera_coord(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
+                                                 bone_length: torch.Tensor, z, z_rend, ray_direction):
         """compute density from positions in camera coordinate
 
         :param position:
@@ -958,10 +937,11 @@ class SSONARF(NeRFBase):
         :return: density of input positions
         """
         local_points = self.to_local(position, pose_to_camera)
-        # coarse density
-        density = self.calc_color_and_density(local_points, z, z_rend, bone_length,
-                                              mode="weight_feature", ray_direction=None)[0]  # B x groups x n*Nc
-        return density
+
+        in_cube_p = in_cube(local_points)  # (B, n_bone, n)
+        density, color = self.backbone(local_points, in_cube_p, z, z_rend, bone_length, ray_direction)
+        density *= in_cube_p.any(dim=1, keepdim=True)
+        return density, color
 
     def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, tri_plane_feature: torch.Tensor,
                  z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str = "weight_feature",
