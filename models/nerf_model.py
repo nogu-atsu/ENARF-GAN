@@ -864,16 +864,16 @@ class SSONARF(NeRFBase):
                                       nn.Softmax(dim=1))
 
         if self.config.model_type == "dnarf":
-            self.deformation_field = MLP(4 * self.num_frequency_for_position * 2, hidden_size, self.num_bone * 3,
-                                         num_layers=8, skips=(4,))
-            self.density_mlp = MLP(3 * self.num_frequency_for_position * 2, hidden_size, 3,
+            self.deformation_field = MLP((self.num_bone * 3 + 1) * self.num_frequency_for_position * 2, hidden_size,
+                                         self.num_bone * 3, num_layers=8, skips=(4,))
+            self.density_mlp = MLP(self.num_bone * 3 * self.num_frequency_for_position * 2, hidden_size, hidden_size,
                                    num_layers=8, skips=(4,))
         elif self.config.model_type == "tnarf":
-            self.density_mlp = StyledMLP(3 * self.num_frequency_for_position * 2, hidden_size, 3,
-                                         style_dim=self.z_dim, num_layers=8)
+            self.density_mlp = StyledMLP(self.num_bone * 3 * self.num_frequency_for_position * 2, hidden_size,
+                                         hidden_size, style_dim=self.z_dim, num_layers=8)
         elif self.config.model_type == "narf":
-            self.density_mlp = MLP(3 * self.num_frequency_for_position * 2, hidden_size, 3,
-                                   num_layers=8, skips=(4,))
+            self.density_mlp = MLP(self.num_bone * 3 * self.num_frequency_for_position * 2, hidden_size,
+                                   hidden_size, num_layers=8, skips=(4,))
 
         self.density_fc = StyledConv1d(self.hidden_size, 1, self.z2_dim)
         self.view_dependent = view_dependent
@@ -885,6 +885,7 @@ class SSONARF(NeRFBase):
 
         self.bce = nn.BCEWithLogitsLoss()
         self.l1 = nn.L1Loss()
+        self.temporal_state = {}
 
     @staticmethod
     def to_local(points, pose_to_camera):
@@ -946,23 +947,18 @@ class SSONARF(NeRFBase):
         assert isinstance(p, torch.Tensor)
         assert bone_length is not None
         # assert mode in ["weight_position", "weight_feature"]
-
-        # memo
-        # p * local_p -> MLP -> density, color
-        print(p.shape)
-        batchsize, _, _, n = p.shape
-        p = p.reshape(batchsize, self.num_bone * 3, n)
         encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
-        prob = self.selector(p)
+        prob = self.selector(encoded_p)
 
-        encoded_p = encoded_p * torch.repeat_interleave(prob, 3, dim=1)
+        encoded_p = encoded_p * torch.repeat_interleave(prob, 3 * self.num_frequency_for_position * 2, dim=1)
 
         if self.config.model_type == "dnarf":
-            dp = self.deformation_field(encoded_p)  # (B, num_bone * 3, n)
+            expand_z = z[:, :, None].expand(-1, -1, p.shape[-1])
+            dp = self.deformation_field(torch.cat([encoded_p, expand_z], dim=1))  # (B, num_bone * 3, n)
             p = p + dp
             encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
 
-        if self.config.mmodel_type == "tnarf":
+        if self.config.model_type == "tnarf":
             feature = self.density_mlp(encoded_p, z)
         else:
             feature = self.density_mlp(encoded_p)
@@ -977,9 +973,10 @@ class SSONARF(NeRFBase):
                                                         feature.shape[-1] // ray_direction.shape[-1],
                                                         dim=2)
                 color = self.mlp(torch.cat([feature, ray_direction], dim=1), z_rend)  # (B, 3, n)
+                color = torch.tanh(color)
         else:
             color = self.mlp(feature, z_rend)  # (B, 4, n)
+            color = torch.tanh(color)
 
-        color = torch.tanh(color)
         density = self.density_activation(density)
         return density, color

@@ -13,7 +13,7 @@ from models.model_utils import mask_based_sampler
 from NARF.models.net import NeRF
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d, Blur
-from models.nerf_model import StyleNeRF, TriPlaneNeRF
+from models.nerf_model import StyleNeRF, TriPlaneNeRF, SSONARF
 from utils.rotation_utils import rotation_6d_to_matrix
 
 
@@ -655,18 +655,17 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         return rendered_color, fg_mask, fine_weights, fine_depth
 
 
-class SSOTriNARFGenerator(nn.Module):
+class SSONARFGenerator(nn.Module):
     def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None):
-        super(SSOTriNARFGenerator, self).__init__()
+        super(SSONARFGenerator, self).__init__()
         self.config = config
         self.size = size
         self.num_bone = num_bone
         self.ray_sampler = mask_based_sampler
 
-        self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=20, num_bone=num_bone,
-                                 bone_length=True,
-                                 parent=parent_id, num_bone_param=num_bone_param,
-                                 view_dependent=True)
+        nerf = TriPlaneNeRF if config.use_triplane else SSONARF
+        self.nerf = nerf(config.nerf_params, z_dim=20, num_bone=num_bone, bone_length=True,
+                         parent=parent_id, num_bone_param=num_bone_param, view_dependent=True)
 
     def register_canonical_pose(self, pose: np.ndarray):
         self.nerf.register_canonical_pose(pose)

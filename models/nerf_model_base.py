@@ -304,9 +304,9 @@ class NeRFBase(nn.Module):
                 z = self.compute_tri_plane_feature(z, bone_length)
             else:
                 z = tri_plane_feature
-            self.buffers_tensors["tri_plane_feature"] = tri_plane_feature
+            self.buffers_tensors["tri_plane_feature"] = z
             if not self.training:
-                self.temporal_state["tri_plane_feature"] = tri_plane_feature
+                self.temporal_state["tri_plane_feature"] = z
 
         (fine_depth, fine_points,
          ray_direction_in_world,
