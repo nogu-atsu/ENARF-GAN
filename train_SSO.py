@@ -13,13 +13,13 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import SSODataset
 from NARF.models.loss import SparseLoss
-from NARF.models.model_utils import random_ray_sampler, all_reduce, get_module
+from NARF.models.model_utils import random_ray_sampler, all_reduce
 from NARF.models.net import NeRFGenerator
 from NARF.utils import yaml_config, write
 from NARF.visualization_utils import ssim, psnr
-from models.net import SSOTriNARFGenerator
+from dataset import SSODataset
+from models.net import SSONARFGenerator
 
 warnings.filterwarnings('ignore')
 
@@ -73,7 +73,7 @@ def create_dataset(config_dataset, just_cache=False):
 
 
 # no check
-def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=0):
+def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=0, num_data=None):
     mse = nn.MSELoss()
 
     size = config.dataset.image_size
@@ -82,7 +82,10 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
 
     loss_func = {"L2": mse, "SSIM": ssim, "PSNR": psnr}
     for key, val_loader in val_loaders.items():
-        num_data = len(val_loader.dataset)
+        if num_data > 1 and key == "train":
+            continue
+        _num_data = len(val_loader.dataset) if num_data is None else min(num_data, len(val_loader.dataset))
+        num_data_all = len(val_loader.dataset) if _num_data == 1 else _num_data
 
         val_loss_color = 0
         val_loss_mask = 0
@@ -116,14 +119,16 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
                 for met in metric:
                     val_loss_color_metric[met] += loss_func[met](img, gen_color).item()
 
-            # save image
-            gen_color = torch.cat([gen_color, img], dim=-1)
-            gen_color = gen_color.cpu().numpy()[0].transpose(1, 2, 0) * 127.5 + 127.5
-            gen_color = np.clip(gen_color, 0, 255)[:, :, ::-1]
-            out_dir = config.out_root
-            out_name = config.out
-            cv2.imwrite(f"{out_dir}/result/{out_name}/{key}_{iter // 5000 * 5000}.png", gen_color)
-            break
+            if num_data == 1:
+                # save image
+                gen_color = torch.cat([gen_color, img], dim=-1)
+                gen_color = gen_color.cpu().numpy()[0].transpose(1, 2, 0) * 127.5 + 127.5
+                gen_color = np.clip(gen_color, 0, 255)[:, :, ::-1]
+                out_dir = config.out_root
+                out_name = config.out
+                cv2.imwrite(f"{out_dir}/result/{out_name}/{key}_{iter // 5000 * 5000}.png", gen_color)
+            if i == num_data - 1:
+                break
         if ddp:
             val_loss_mask = all_reduce(val_loss_mask)
             val_loss_color = all_reduce(val_loss_color)
@@ -131,10 +136,10 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
             for met in metric:
                 val_loss_color_metric[met] = all_reduce(val_loss_color_metric[met])
 
-        loss[key] = {"color": val_loss_color / num_data,
-                     "mask": val_loss_mask / num_data}
+        loss[key] = {"color": val_loss_color / num_data_all,
+                     "mask": val_loss_mask / num_data_all}
         for met in metric:
-            loss[key][f"color_{met}"] = val_loss_color_metric[met] / num_data
+            loss[key][f"color_{met}"] = val_loss_color_metric[met] / num_data_all
 
     return loss
 
@@ -154,8 +159,8 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
     dataset = dataset[0]
     num_bone = dataset.num_bone
 
-    gen = SSOTriNARFGenerator(config.generator_params, size, num_bone,
-                              parent_id=dataset.parents, num_bone_param=dataset.num_bone_param)
+    gen = SSONARFGenerator(config.generator_params, size, num_bone,
+                           parent_id=dataset.parents, num_bone_param=dataset.num_bone_param)
     gen.register_canonical_pose(dataset.canonical_pose)
 
     loss_func = SparseLoss(config.loss)
@@ -203,7 +208,6 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
 
     train_loader, val_loaders = data_loader
 
-    mse = nn.MSELoss()
     train_loss_color = 0
     train_loss_mask = 0
 
@@ -268,7 +272,7 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
                 # add train time
                 accumulated_train_time += time.time() - train_start
 
-                val_loss = validate(gen, val_loaders, config, ddp, iter=iter)
+                val_loss = validate(gen, val_loaders, config, ddp, iter=iter, num_data=1)
                 torch.cuda.empty_cache()
 
                 if ddp:
@@ -308,11 +312,10 @@ def validation_func(config, dataset, data_loader, rank, ddp=False):
 
     dataset = dataset[0]
     num_bone = dataset.num_bone
-    intrinsics = dataset.intrinsics
 
-    gen = NeRFGenerator(config.generator_params, size, intrinsics, num_bone,
-                        ray_sampler=random_ray_sampler,
-                        parent_id=dataset.output_parents)
+    gen = SSONARFGenerator(config.generator_params, size, num_bone,
+                           parent_id=dataset.parents, num_bone_param=dataset.num_bone_param)
+    gen.register_canonical_pose(dataset.canonical_pose)
 
     torch.cuda.set_device(rank)
     gen.cuda(rank)
@@ -322,7 +325,7 @@ def validation_func(config, dataset, data_loader, rank, ddp=False):
         gen = nn.parallel.DistributedDataParallel(gen, device_ids=[rank])
 
     if config.resume or config.resume_latest:
-        path = f"{out_dir}/result/{out_name}/snapshot_latest.pth" if config.resume_latest else config.resume
+        path = f"{out_dir}/result/{out_name}/snapshot_100000.pth" if config.resume_latest else config.resume
         if os.path.exists(path):
             snapshot = torch.load(path, map_location="cuda")
             if ddp:
@@ -336,7 +339,7 @@ def validation_func(config, dataset, data_loader, rank, ddp=False):
 
     _, val_loaders = data_loader
 
-    val_loss = validate(gen, val_loaders, config, ddp, metric=["PSNR", "SSIM"])
+    val_loss = validate(gen, val_loaders, config, ddp, metric=["PSNR", "SSIM"], num_data=400)
     torch.cuda.empty_cache()
     # write log
     if rank == 0:
@@ -351,8 +354,28 @@ if __name__ == "__main__":
     parser.add_argument('--resume_latest', action="store_true")
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--validation', action="store_true")
+    parser.add_argument('--abci', action="store_true")
+    parser.add_argument('--wisteria', action="store_true")
+
     args = parser.parse_args()
 
     config = yaml_config(args.config, args.default_config, args.resume_latest, args.num_workers)
+    if args.abci:  # replace path in abci
+        config.out_root = config.out_root.replace("/data/unagi0/noguchi",
+                                                  "/home/acc12675ut/data2/results")
+        config.dataset.train.data_root = config.dataset.train.data_root.replace("/data/unagi0/noguchi/dataset",
+                                                                                "/home/acc12675ut/data2")
+        for k, v in config.dataset.val.items():
+            v.data_root = v.data_root.replace("/data/unagi0/noguchi/dataset",
+                                              "/home/acc12675ut/data2")
+
+    if args.wisteria:  # replace path in wisteria
+        config.out_root = config.out_root.replace("/data/unagi0/noguchi",
+                                                  "/work/gn53/k75008/results")
+        config.dataset.train.data_root = config.dataset.train.data_root.replace("/data/unagi0/noguchi/dataset",
+                                                                                "/work/gn53/k75008/dataset")
+        for k, v in config.dataset.val.items():
+            v.data_root = v.data_root.replace("/data/unagi0/noguchi/dataset",
+                                              "/work/gn53/k75008/dataset")
 
     train(config, args.validation)
