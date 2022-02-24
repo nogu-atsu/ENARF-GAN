@@ -261,21 +261,25 @@ class HumanDataset(HumanDatasetBase):
         assert blosc.unpack_array(self.imgs[0]).shape[-1] == self.size
         if self.return_bone_params:
             camera_intrinsic = data_dict["camera_intrinsic"] if self.load_camera_intrinsics else None
-            camera_rotation = data_dict["camera_rotation"]
-            camera_translation = data_dict["camera_translation"]
             smpl_pose = data_dict["smpl_pose"]
 
-            self.camera_rotation = camera_rotation
             self.intrinsics = camera_intrinsic
             self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
             self.pose_to_world = smpl_pose
             extrinsic = np.broadcast_to(np.eye(4), (len(self.imgs), 4, 4)).copy()
-            extrinsic[:, :3, :3] = camera_rotation
-            extrinsic[:, :3, 3:] = camera_translation
-            self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
+
+            if "camera_rotation" in data_dict:
+                camera_rotation = data_dict["camera_rotation"]
+                camera_translation = data_dict["camera_translation"]
+                self.camera_rotation = camera_rotation
+                extrinsic[:, :3, :3] = camera_rotation
+                extrinsic[:, :3, 3:] = camera_translation
+                self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
+            else:
+                self.pose_to_camera = self.pose_to_world
 
             # load canonical pose
-            canonical_pose_path = f"smpl_data/male_canonical.npy"
+            canonical_pose_path = f"smpl_data/neutral_canonical.npy"
             if os.path.exists(canonical_pose_path):
                 self.canonical_pose = np.load(canonical_pose_path)
 
@@ -767,17 +771,21 @@ class HumanPoseDataset(THUmanPoseDataset):
             data_dict = pickle.load(f)
 
         camera_intrinsic = data_dict["camera_intrinsic"]
-        camera_rotation = data_dict["camera_rotation"]
-        camera_translation = data_dict["camera_translation"]
         smpl_pose = data_dict["smpl_pose"]
 
         self.intrinsics = camera_intrinsic
         self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
         self.pose_to_world = smpl_pose
         extrinsic = np.broadcast_to(np.eye(4), (len(self.intrinsics), 4, 4)).copy()
-        extrinsic[:, :3, :3] = camera_rotation
-        extrinsic[:, :3, 3:] = camera_translation
-        self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
+
+        if "camera_rotation" in data_dict:
+            camera_rotation = data_dict["camera_rotation"]
+            camera_translation = data_dict["camera_translation"]
+            extrinsic[:, :3, :3] = camera_rotation
+            extrinsic[:, :3, 3:] = camera_translation
+            self.pose_to_camera = np.matmul(extrinsic[:, None], self.pose_to_world)
+        else:
+            self.pose_to_camera = self.pose_to_world
 
         # load canonical pose
         canonical_pose_path = f"{self.data_root}/canonical.npy"
