@@ -199,12 +199,18 @@ def merge_all_cache(person_ids, mode="train"):
 
     #     validity = np.concatenate([data["validity"] for data in all_data], axis=0)
 
+    # for data in all_data:  # save_cacheではnormalizeしてなかった
+    #     data["camera_translation"] /= 100
+    #     data["smpl_pose"][:, :, :3, 3] /= 100
+
     for k in all_data[0]:
         all_data_dict[k] = np.concatenate([data[k] for data in all_data], axis=0)
 
     os.makedirs(f'{cache_path}/all_{mode}', exist_ok=True)
     with open(f'{cache_path}/all_{mode}/cache.pickle', 'wb') as f:
         pickle.dump(all_data_dict, f)
+
+    np.save(f'{cache_path}/all_{mode}/canonical.npy', np.load(f"{SMPL_MODEL_PATH}/male_canonical.npy"))
 
 
 def preprocess():
