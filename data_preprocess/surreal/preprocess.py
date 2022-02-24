@@ -55,6 +55,8 @@ def preprocess(path):
                       [0, 0, 0, 1]])
     A_new = np.matmul(trans, A)
 
+    if annot["joints3D"].ndim !=3:
+        return None, None, None
     # shift
     joints3D = annot["joints3D"][:, :, 0]
     camLoc = annot["camLoc"]
@@ -89,7 +91,7 @@ def preprocess(path):
     resized_frame = cv2.resize(cropped_frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
     resized_K = cropped_K.copy()
     resized_K[:2] *= IMG_SIZE / CROP_SIZE
-    return resized_frame, resized_K, A_new, pose_2d, ((x1, y1), (x2, y2)), annot["joints2D"][:, :, 0]
+    return resized_frame, resized_K, A_new
 
 
 if __name__ == "__main__":
@@ -106,10 +108,13 @@ if __name__ == "__main__":
     pose_cache = []
     intrinsic_cache = []
     for path in tqdm(video_path):
-        img, K, pose_3d, _, _, _ = preprocess(path)
-        img_cache.append(blosc.pack_array(img[:, :, ::-1].transpose(2, 0, 1)))
-        pose_cache.append(pose_3d[0])
-        intrinsic_cache.append(K)
+        img, K, pose_3d = preprocess(path)
+        if img is not None:
+            img_cache.append(blosc.pack_array(img[:, :, ::-1].transpose(2, 0, 1)))
+            pose_cache.append(pose_3d[0])
+            intrinsic_cache.append(K)
+        else:
+            print("invalid data")
 
     img_cache = np.array(img_cache, dtype="object")
     pose_cache = np.array(pose_cache)
