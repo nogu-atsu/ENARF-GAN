@@ -458,7 +458,9 @@ class TriPlaneNeRF(NeRFBase):
         # self.density_scale = config.density_scale
 
         # parameters for position encoding
+        nffp = self.config.num_frequency_for_position if "num_frequency_for_position" in self.config else 10
         nffo = self.config.num_frequency_for_other if "num_frequency_for_other" in self.config else 4
+        self.num_frequency_for_position = nffp
         self.num_frequency_for_other = nffo
 
         self.hidden_size = hidden_size
@@ -507,7 +509,17 @@ class TriPlaneNeRF(NeRFBase):
                 return tri_plane
 
             self.tri_plane_gen = warp
+        elif self.config.selector_mlp:
+            self.generator = self.prepare_stylegan2(self.feat_dim * 3)
+            self.tri_plane_gen = lambda z, *args, **kwargs: torch.cat(
+                [self.generator(z, *args, **kwargs),
+                 z.new_zeros(z.shape[0], self.num_bone * 3, 256, 256)], dim=1)
 
+            self.selector = nn.Sequential(EqualConv1d(3 * self.num_bone * self.num_frequency_for_position * 2,
+                                                      10 * self.num_bone, 1, groups=self.num_bone),
+                                          nn.ReLU(inplace=True),
+                                          EqualConv1d(10 * self.num_bone, self.num_bone, 1,
+                                                      groups=self.num_bone))
         else:
             self.tri_plane_gen = self.prepare_stylegan2((self.feat_dim + self.num_bone) * 3)
 
@@ -639,26 +651,33 @@ class TriPlaneNeRF(NeRFBase):
     def calc_weight(self, tri_plane_weights: torch.Tensor, position: torch.Tensor, position_validity: torch.Tensor,
                     mode="prod"):
         bs, n_bone, _, n = position.shape
-        # position = position.reshape(bs * n_bone, 1, 3, n)
-        # weight = self.sample_point_feature_(tri_plane_weights,
-        #                                     position)  # , padding_value=-1e8)  # (B * n_bone, 1, 1, n)
-        position = position.reshape(bs * n_bone, 3, n)
 
-        if mode == "sum":
-            # sum and softmax
-            weight = self.sample_feature(tri_plane_weights, position)  # (B * n_bone, 1, n)
-            weight = weight.reshape(bs, n_bone, n)
+        if hasattr(self, "selector"):  # use selector
+            position = position.reshape(bs, n_bone * 3, n)
+            encoded_p = encode(position, self.num_frequency_for_position, self.num_bone)
+            h = self.selector(encoded_p)
+            weight = torch.softmax(h, dim=1)  # (B, n_bone, n)
+        else:  # tri-plane based
+            # position = position.reshape(bs * n_bone, 1, 3, n)
+            # weight = self.sample_point_feature_(tri_plane_weights,
+            #                                     position)  # , padding_value=-1e8)  # (B * n_bone, 1, 1, n)
 
-            # # wight for invalid point is 0
-            weight = weight - ~position_validity * 1e4
-            weight = torch.softmax(weight, dim=1)
+            position = position.reshape(bs * n_bone, 3, n)
+            if mode == "sum":
+                # sum and softmax
+                weight = self.sample_feature(tri_plane_weights, position)  # (B * n_bone, 1, n)
+                weight = weight.reshape(bs, n_bone, n)
 
-        elif mode == "prod":
-            # sigmoid and prod
-            weight = self.sample_feature(tri_plane_weights, position, reduction="prod")  # (B * n_bone, 1, n)
-            weight = weight.reshape(bs, n_bone, n)
-        else:
-            weight = torch.ones(bs, n_bone, n, device=position.device) / n_bone
+                # # wight for invalid point is 0
+                weight = weight - ~position_validity * 1e4
+                weight = torch.softmax(weight, dim=1)
+
+            elif mode == "prod":
+                # sigmoid and prod
+                weight = self.sample_feature(tri_plane_weights, position, reduction="prod")  # (B * n_bone, 1, n)
+                weight = weight.reshape(bs, n_bone, n)
+            else:
+                weight = torch.ones(bs, n_bone, n, device=position.device) / n_bone
 
         return weight
 
