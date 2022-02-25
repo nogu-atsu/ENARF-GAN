@@ -562,6 +562,11 @@ class TriPlaneNeRF(NeRFBase):
         coordinate = pose[:, :3, 3]
         length = np.linalg.norm(coordinate[1:] - coordinate[self.parent_id[1:]], axis=1)  # (23, )
 
+        canonical_joints = pose[1:, :3, 3]  # (n_bone, 3)
+        canonical_parent_joints = pose[self.parent_id[1:], :3, 3]  # (n_bone, 3)
+        self.register_buffer('canonical_joints', torch.tensor(canonical_joints, dtype=torch.float32))
+        self.register_buffer('canonical_parent_joints', torch.tensor(canonical_parent_joints, dtype=torch.float32))
+
         # move origins to parts' center (self.origin_location == "center)
         pose = np.concatenate([pose[1:, :, :3],
                                (pose[1:, :, 3:] +

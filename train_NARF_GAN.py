@@ -138,6 +138,39 @@ def train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length,
         # loss_triplane_mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:].var(dim=0).mean()
         loss_gen += loss_triplane_mask * config.loss.tri_plane_mask_reg_coef
 
+    if config.loss.tri_plane_square_reg_coef > 0:
+        mask = gen.nerf.buffers_tensors["tri_plane_feature"][:, 32 * 3:]  # (B, n_bone * 3, 256, 256)
+        device = mask.device
+
+        arange = torch.arange(256, device=device)
+        pixel_location = (torch.stack(torch.meshgrid(arange, arange)[::-1]) + 0.5) / 128 - 1  # (2, 256, 256)
+
+        canonical_joints = gen.nerf.canonical_joints[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
+        canonical_parent_joints = gen.nerf.canonical_parent_joints[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
+
+        joint_to_pixel = pixel_location - canonical_joints[:, :, None, None]  # (3n_bone, 2, 256, 256)
+        bone_direction = F.normalize(canonical_parent_joints - canonical_joints, dim=1)  # (3n_bone, 2)
+        joint_pixel_distance = joint_to_pixel.square().sum(dim=1)  # (3n_bone, 256, 256)
+        pixel_bone_inner_product = (joint_to_pixel * bone_direction[:, :, None, None]).sum(dim=1)  # (3n_bone, 256, 256)
+        bone_pixel_distance = joint_pixel_distance - pixel_bone_inner_product ** 2  # (3n_bone, 256, 256)
+        parent_joint_pixel_distance = (pixel_location - canonical_parent_joints[:, :, None,
+                                                        None]).square().sum(dim=1)  # (3n_bone, 256, 256)
+        _bone_length = torch.norm(canonical_parent_joints - canonical_joints, dim=1)  # (3n_bone, )
+
+        distance = torch.where(pixel_bone_inner_product >= 0, bone_pixel_distance, joint_pixel_distance)
+        distance = torch.where(pixel_bone_inner_product <= _bone_length[:, None, None],
+                               distance, parent_joint_pixel_distance)
+        distance = distance - 4e-4
+        distance = distance.masked_fill(distance < 0, -10)
+
+        # # distance between part center and pixel
+        # part_center = gen.nerf.canonical_pose[:, [0, 1, 1, 2, 2, 0], 3].reshape(-1, 2)  # (num_bone * 3, 2)
+        # xy = pixel_location - part_center[:, :, None, None]
+        # distance = xy.square().sum(dim=1)  # (num_bone * 3, 256, 256)
+
+        tri_plane_square_reg = (torch.sigmoid(mask.clamp_max(6)) * distance).mean()
+        loss_gen += tri_plane_square_reg * config.loss.tri_plane_square_reg_coef
+
     if config.loss.pseudo_mask_reg_coef > 0:
         fine_density = gen.nerf.buffers_tensors["fine_density"].detach()  # (B, 1, n)
         mask_weight = gen.nerf.buffers_tensors["mask_weight"]  # (B, n_bone, n)
