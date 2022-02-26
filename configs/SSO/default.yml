@@ -40,13 +40,21 @@ generator_params:
     density_activation: MyReLU
     origin_location: center  # origin of local coordinate, root or center
     coordinate_scale: 3
+    render_bs: 16384
+    # mlp model
+    model_type: "narf"
+
     # tri-plane model
     multiply_density_with_triplane_wieght: False
     clamp_mask: False
-    render_bs: 16384
     constant_triplane: False
     constant_trimask: False  # only tri-plane mask is constant
+    selector_mlp: False
     deformation_field: False
+    # if deformation_field
+    time_conditional: True
+    pose_conditional: False
+    constant_trimask_lr_mul: 1
 loss:
   color_coef: 1
   mask_coef: 1
