@@ -31,10 +31,13 @@ def d_r1_loss(real_pred, real_img):
 
 
 def push_to_background(fake_mask, background_ratio=0.3):
-    fake_mask = fake_mask.reshape(-1)
-    fake_mask = torch.topk(fake_mask, k=int(torch.numel(fake_mask) * background_ratio), largest=False,
-                           sorted=False)[0]
-    loss = (fake_mask ** 2).mean()
+    if background_ratio > 0:
+        fake_mask = fake_mask.reshape(-1)
+        fake_mask = torch.topk(fake_mask, k=int(torch.numel(fake_mask) * background_ratio), largest=False,
+                               sorted=False)[0]
+        loss = (fake_mask ** 2).mean()
+    else:
+        loss = 0
     return loss
 
 
