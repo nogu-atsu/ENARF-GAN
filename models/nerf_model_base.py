@@ -298,8 +298,8 @@ class NeRFBase(nn.Module):
                z: torch.tensor, z_rend: torch.tensor, bone_length: torch.tensor,
                thres: float = 0.0, render_scale: float = 1, Nc: int = 64, Nf: int = 128,
                semantic_map: bool = False, return_intermediate: bool = False,
-               camera_pose: Optional[torch.Tensor] = None, tri_plane_feature: Optional[torch.Tensor] = None
-               ) -> (torch.tensor,) * 3:
+               camera_pose: Optional[torch.Tensor] = None, tri_plane_feature: Optional[torch.Tensor] = None,
+               truncation_psi=1) -> (torch.tensor,) * 3:
         near_plane = 0.3
         # n <- number of sampled pixels
         # image_coord: B x groups x 3 x n
@@ -319,7 +319,7 @@ class NeRFBase(nn.Module):
 
         if self.tri_plane_based:
             if tri_plane_feature is None:
-                z = self.compute_tri_plane_feature(z, bone_length)
+                z = self.compute_tri_plane_feature(z, bone_length, truncation_psi)
             else:
                 z = tri_plane_feature
             self.buffers_tensors["tri_plane_feature"] = z
@@ -422,7 +422,8 @@ class NeRFBase(nn.Module):
 
     def forward(self, batchsize, sampled_img_coord, pose_to_camera, inv_intrinsics, z, z_rend,
                 bone_length, render_scale=1, Nc=64, Nf=128,
-                return_intermediate=False, camera_pose: Optional[torch.Tensor] = None):
+                return_intermediate=False, camera_pose: Optional[torch.Tensor] = None,
+                truncation_psi=1):
         """
         rendering function for sampled rays
         :param batchsize:
@@ -450,7 +451,8 @@ class NeRFBase(nn.Module):
                                   Nf=Nf,
                                   render_scale=render_scale,
                                   return_intermediate=return_intermediate,
-                                  camera_pose=camera_pose)
+                                  camera_pose=camera_pose,
+                                  truncation_psi=truncation_psi)
         if return_intermediate:
             merged_color, merged_mask, _, intermediate_output = nerf_output
             return merged_color, merged_mask, intermediate_output

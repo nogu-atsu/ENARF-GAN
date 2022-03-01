@@ -609,7 +609,7 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         return self.nerf.flops
 
     def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
-                return_intermediate=False):
+                return_intermediate=False, truncation_psi=1):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -636,7 +636,8 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
                                 bone_length,
                                 Nc=self.config.nerf_params.Nc,
                                 Nf=self.config.nerf_params.Nf,
-                                return_intermediate=return_intermediate)
+                                return_intermediate=return_intermediate, truncation_psi=truncation_psi
+                                )
 
         fg_color, fg_mask = nerf_output[:2]
         fine_weights = self.nerf.buffers_tensors["fine_weights"]

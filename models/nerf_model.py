@@ -833,10 +833,11 @@ class TriPlaneNeRF(NeRFBase):
             density = self.density_activation(density) * 10
         return density, color
 
-    def compute_tri_plane_feature(self, z, bone_length):
+    def compute_tri_plane_feature(self, z, bone_length, truncation_psi=1):
         # generate tri-plane feature conditioned on z and bone_length
         encoded_length = encode(bone_length, self.num_frequency_for_other, num_bone=self.num_bone_param)
-        tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0])  # (B, (32 + n_bone) * 3, h, w)
+        tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0],
+                                               truncation_psi=truncation_psi)  # (B, (32 + n_bone) * 3, h, w)
         return tri_plane_feature
 
 
