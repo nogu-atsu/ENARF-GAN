@@ -89,22 +89,34 @@ def train_step(iter, gen, pose_to_camera, pose_to_world, bone_length, inv_intrin
                enc, gen_optimizer, enc_optimizer,
                rank, writer, real_img, real_mask, n_accum_step=1):
     # randomly sample latent
-    z = enc(real_img)
-    z_dim = z.shape[1] // 2
-    z_mean, z_std = z[:, :z_dim], F.softplus(z[:, z_dim:] / 2)
-    epsilon = torch.randn(z_mean.shape, device=z_mean.device)
-    z = z_mean + epsilon * z_std
+    enc.eval()
 
-    fake_img, fake_low_res_mask, fine_weights, fine_depth = gen(pose_to_camera, pose_to_world,
-                                                                bone_length, z, inv_intrinsic)
+    batchsize = len(real_img) // n_accum_step
 
-    # background_ratio = gen.background_ratio
-    # loss_bone = bone_loss_func(fake_low_res_mask, bone_mask,
-    #                            background_ratio) * config.loss.bone_guided_coef
+    loss_recon = 0
+    fake_img = []
+    for i in range(0, len(real_img), batchsize):
+        z = enc(real_img[i:i + batchsize])
+        z_dim = z.shape[1] // 2
+        z_mean, z_std = z[:, :z_dim], F.softplus(z[:, z_dim:] / 2)
+        epsilon = torch.randn(z_mean.shape, device=z_mean.device)
+        z = z_mean + epsilon * z_std
 
-    loss_recon = mse(real_img, fake_img) + mse(real_mask, fake_low_res_mask)
+        pose_to_camera_i = pose_to_camera[i:i + batchsize]
+        pose_to_world_i = pose_to_world[i:i + batchsize]
+        bone_length_i = bone_length[i:i + batchsize]
+        inv_intrinsic_i = inv_intrinsic[i:i + batchsize]
+        real_img_i = real_img[i:i + batchsize]
+        real_mask_i = real_mask[i:i + batchsize]
+        fake_img_i, fake_mask_i, fine_weights, fine_depth = gen(pose_to_camera_i, pose_to_world_i,
+                                                                bone_length_i, z, inv_intrinsic_i)
+        loss_recon_i = mse(real_img_i, fake_img_i) + mse(real_mask_i, fake_mask_i)
 
-    # loss_gen = loss_recon + loss_bone
+        loss_recon_i.backward()
+        loss_recon += loss_recon_i
+
+        fake_img.append(fake_img_i.detach())
+    fake_img = torch.cat(fake_img)
 
     if rank == 0:
         if iter % 100 == 0:
@@ -112,16 +124,13 @@ def train_step(iter, gen, pose_to_camera, pose_to_world, bone_length, inv_intrin
             write(iter, loss_recon, "loss_recon", writer)
             # write(iter, loss_bone, "bone_loss", writer)
 
-    loss_recon.backward()
+    torch.nn.utils.clip_grad_norm_(gen.parameters(), 5.0)
+    gen_optimizer.step()
+    enc_optimizer.step()
 
-    if iter % n_accum_step == 0:
-        torch.nn.utils.clip_grad_norm_(gen.parameters(), 5.0)
-        gen_optimizer.step()
-        enc_optimizer.step()
-
-        # update discriminator
-        gen_optimizer.zero_grad(set_to_none=True)
-        enc_optimizer.zero_grad(set_to_none=True)
+    # update discriminator
+    gen_optimizer.zero_grad(set_to_none=True)
+    enc_optimizer.zero_grad(set_to_none=True)
 
     return fake_img
 
@@ -158,11 +167,10 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
         gen = nn.parallel.DistributedDataParallel(gen, device_ids=[n_gpu])
         enc = nn.parallel.DistributedDataParallel(enc, device_ids=[n_gpu])
 
-
     gen_lr = 1e-3
 
-    gen_optimizer = optim.Adam(gen.parameters(), lr=gen_lr, betas=(0, 0.99))
-    enc_optimizer = optim.Adam(enc.parameters(), lr=gen_lr, betas=(0, 0.99))
+    gen_optimizer = optim.Adam(gen.parameters(), lr=gen_lr, betas=(0.9, 0.99))
+    enc_optimizer = optim.Adam(enc.parameters(), lr=gen_lr / 10, betas=(0.9, 0.99))
 
     iter = 0
     start_time = time.time()
@@ -206,7 +214,6 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
             if (iter + 1) % 10 == 0 and rank == 0:
                 print(f"{iter + 1} iter, {(time.time() - start_time) / (iter - init_iter + 1)} s/iter")
             gen.train()
-            enc.train()
 
             real_img = data["img"].cuda(non_blocking=True).float()
             real_mask = data["mask"].cuda(non_blocking=True).float()
@@ -236,7 +243,7 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
                 if iter == 10:
                     with open(f"{out_dir}/result/{out_name}/iter_10_succeeded.txt", "w") as f:
                         f.write("ok")
-                if iter % 50 == 0:
+                if iter % 200 == 0:
                     print(fake_img.shape)
                     save_img(fake_img, f"{out_dir}/result/{out_name}/rgb_{iter // 5000 * 5000}.png")
                     save_img(real_img, f"{out_dir}/result/{out_name}/real.png")

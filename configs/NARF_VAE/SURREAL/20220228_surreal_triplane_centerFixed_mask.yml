@@ -42,7 +42,7 @@ start_replace: 4000
 start_gen_training: 0
 consistency_regularization_coef: 0.0
 nerf_only: True
-n_accum_step: 1
+n_accum_step: 2
 
 num_iter: 800000
 
