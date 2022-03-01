@@ -19,6 +19,7 @@ from NARF.models.net import NeRFGenerator
 from NARF.utils import yaml_config, write
 from NARF.visualization_utils import ssim, psnr
 from dataset import SSODataset
+from models.loss import loss_dist_func
 from models.net import SSONARFGenerator
 
 warnings.filterwarnings('ignore')
@@ -240,7 +241,15 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
             nerf_color, nerf_mask, grid = gen(pose_to_camera, camera_rotation, mask, frame_time,
                                               bone_length, inv_intrinsic)
             loss_color, loss_mask = loss_func(grid, nerf_color, nerf_mask, img, mask)
+
             loss = loss_color + loss_mask
+
+            if config.loss.surface_reg_coef > 0:
+                fine_weights = gen.nerf.buffers_tensors["fine_weights"]
+                fine_depth = gen.nerf.buffers_tensors["fine_depth"]
+                loss_dist = loss_dist_func(fine_weights, fine_depth)
+                print(loss_dist)
+                loss += loss_dist * config.loss.surface_reg_coef
 
             # accumulate train loss
             train_loss_color += loss_color.item() * config.dataset.bs
@@ -248,6 +257,8 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
 
             if (iter + 1) % tensorboard_interval == 0 and rank == 0:  # tensorboard
                 write(iter, loss, "gen", writer)
+                if config.loss.surface_reg_coef > 0:
+                    write(iter, loss_dist, "loss_dist", writer)
             loss.backward()
 
             gen_optimizer.step()

@@ -59,6 +59,7 @@ loss:
   color_coef: 1
   mask_coef: 1
   nerf_loss_type: mse
+  surface_reg_coef: 0
 
 # hyper parameters
 num_iter: 100000
