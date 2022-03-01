@@ -20,26 +20,38 @@ class NeRFBase(nn.Module):
     def flops(self):
         raise NotImplementedError()
 
-    def register_canonical_pose(self, pose: np.ndarray) -> None:
-        """ register canonical pose.
-
-        Args:
-            pose: array of (24, 4, 4)
-
-        Returns:
-
-        """
-        assert self.origin_location == "center"
-        coordinate = pose[:, :3, 3]
-        length = np.linalg.norm(coordinate[1:] - coordinate[self.parent_id[1:]], axis=1)  # (23, )
-
-        # move origins to parts' center (self.origin_location == "center)
-        pose = np.concatenate([pose[1:, :, :3],
-                               (pose[1:, :, 3:] +
-                                pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
-
-        self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
-        self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
+    # def register_canonical_pose(self, pose: np.ndarray) -> None:
+    #     """ register canonical pose.
+    #
+    #     Args:
+    #         pose: array of (24, 4, 4)
+    #
+    #     Returns:
+    #
+    #     """
+    #     assert self.origin_location in ["center", "center_fixed", "center+head"]
+    #     coordinate = pose[:, :3, 3]
+    #     length = np.linalg.norm(coordinate[1:] - coordinate[self.parent_id[1:]], axis=1)  # (23, )
+    #
+    #     if self.origin_location == "center":
+    #         # move origins to parts' center (self.origin_location == "center)
+    #         pose = np.concatenate([pose[1:, :, :3],
+    #                                (pose[1:, :, 3:] +
+    #                                 pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
+    #     elif self.origin_location == "center_fixed":
+    #         pose = np.concatenate([pose[self.parent_id[1:], :, :3],
+    #                                (pose[1:, :, 3:] +
+    #                                 pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
+    #     elif self.origin_location == "center+head":
+    #         length = np.concatenate([length, np.ones(1,)])  # (24,)
+    #         head_id = 15
+    #         _pose = np.concatenate([pose[self.parent_id[1:], :, :3],
+    #                                 (pose[1:, :, 3:] +
+    #                                  pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
+    #         pose = np.concatenate([_pose, pose[head_id][None]])  # (24, 4, 4)
+    #
+    #     self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
+    #     self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
 
     def decide_frustrum_range(self, num_bone, image_coord, pose_to_camera, inv_intrinsics,
                               near_plane, far_plane, return_camera_coord=False):
