@@ -155,7 +155,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         self.nerf = nerf_model(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
                                parent=parent_id, num_bone_param=num_bone_param)
         self.background_generator = StyleGANGenerator(size=patch_size, style_dim=z_dim,
-                                                      n_mlp=4, last_channel=nerf_out_dim,
+                                                      n_mlp=6, last_channel=nerf_out_dim,
                                                       crop_background=crop_background)
 
         renderer = StyleNeRFRenderer if use_style_nerf_renderer else NeuralRenderer
@@ -569,13 +569,14 @@ class PretrainedStyleGAN(nn.Module):
 
 
 class TriNeRFGenerator(nn.Module):  # tri-plane nerf
-    def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None):
+    def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None, black_background=False):
         super(TriNeRFGenerator, self).__init__()
         self.config = config
         self.size = size
         self.num_bone = num_bone
         self.ray_sampler = whole_image_grid_ray_sampler
         self.background_ratio = config.background_ratio
+        self.black_background = black_background
 
         z_dim = config.z_dim
         crop_background = config.crop_background
@@ -585,12 +586,13 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=[z_dim * 2, z_dim], num_bone=num_bone,
                                  bone_length=True,
                                  parent=parent_id, num_bone_param=num_bone_param)
-        if config.pretrained_background:
-            self.background_generator = PretrainedStyleGAN()
-        else:
-            self.background_generator = StyleGANGenerator(size=size, style_dim=z_dim,
-                                                          n_mlp=4, last_channel=3,
-                                                          crop_background=crop_background)
+        if not black_background:
+            if config.pretrained_background:
+                self.background_generator = PretrainedStyleGAN()
+            else:
+                self.background_generator = StyleGANGenerator(size=size, style_dim=z_dim,
+                                                              n_mlp=4, last_channel=3,
+                                                              crop_background=crop_background)
 
     def register_canonical_pose(self, pose: np.ndarray):
         self.nerf.register_canonical_pose(pose)
@@ -625,8 +627,12 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
 
         grid, homo_img = self.ray_sampler(self.size, self.size, batchsize)
 
-        z_dim = z.shape[1] // 4
-        z_for_nerf, z_for_neural_render, z_for_background = torch.split(z, [z_dim * 2, z_dim, z_dim], dim=1)
+        if not self.black_background:
+            z_dim = z.shape[1] // 4
+            z_for_nerf, z_for_neural_render, z_for_background = torch.split(z, [z_dim * 2, z_dim, z_dim], dim=1)
+        else:
+            z_dim = z.shape[1] // 3
+            z_for_nerf, z_for_neural_render = torch.split(z, [z_dim * 2, z_dim], dim=1)
 
         # sparse rendering
         inv_intrinsics = torch.tensor(inv_intrinsics).float().cuda(homo_img.device)
@@ -646,8 +652,11 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         fg_color = fg_color.reshape(batchsize, 3, self.size, self.size)
         fg_mask = fg_mask.reshape(batchsize, self.size, self.size)
 
-        n_latent = self.background_generator.n_latent
-        bg_color, _ = self.background_generator([z_for_background, z_for_neural_render], inject_index=n_latent - 4)
+        if not self.black_background:
+            n_latent = self.background_generator.n_latent
+            bg_color, _ = self.background_generator([z_for_background, z_for_neural_render], inject_index=n_latent - 4)
+        else:
+            bg_color = -1
 
         rendered_color = fg_color + (1 - fg_mask[:, None]) * bg_color
 
@@ -667,10 +676,19 @@ class SSONARFGenerator(nn.Module):
         self.ray_sampler = mask_based_sampler
 
         nerf = TriPlaneNeRF if config.use_triplane else SSONARF
-        self.nerf = nerf(config.nerf_params, z_dim=20, num_bone=num_bone, bone_length=True,
 
         self.time_conditional = self.config.nerf_params.time_conditional
         self.pose_conditional = self.config.nerf_params.pose_conditional
+
+        z_dim = 0
+        if self.time_conditional:
+            z_dim += 20
+        if self.pose_conditional:
+            z_dim += (num_bone - 1) * 9
+
+        if config.nerf_params.origin_location == "center+head":
+            num_bone_param = num_bone
+        self.nerf = nerf(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
                          parent=parent_id, num_bone_param=num_bone_param, view_dependent=True)
 
     def register_canonical_pose(self, pose: np.ndarray):
