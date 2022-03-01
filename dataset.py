@@ -63,6 +63,10 @@ class HumanDatasetBase(Dataset):
     def get_image(self, i):
         raise NotImplementedError()
 
+    def add_blank_part(self, joint_mat_camera, joint_pos_image):
+        idx = [0, 0] + list(range(10)) + [9, 9] + list(range(10, 24))
+        return joint_mat_camera[:, idx], joint_pos_image[:, :, idx]
+
     def __getitem__(self, i):
         i = i % len(self.imgs)
 
@@ -101,6 +105,16 @@ class HumanDatasetBase(Dataset):
             return_dict["bone_length"] = bone_length.astype("float32")
             return_dict["intrinsics"] = intrinsics.astype("float32")  # (1, 3, 3)
 
+            if self.return_bone_mask:
+                joint_pos_image = self.cp.pose_to_image_coord(pose_to_camera, intrinsics)
+
+                # this is necessary for creating mask
+                joint_mat_camera_, joint_pos_image_ = self.add_blank_part(pose_to_camera[None], joint_pos_image)
+
+                _, bone_mask, _, _ = create_mask(self.hpp, joint_mat_camera_, joint_pos_image_,
+                                                 self.size, thickness=0.5)
+
+                return_dict["bone_mask"] = bone_mask.astype("float32")  # (1, 3, 3)
         return return_dict
 
 
