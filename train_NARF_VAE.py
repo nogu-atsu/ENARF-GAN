@@ -19,7 +19,7 @@ from models.net import NeRFNRGenerator, TriNeRFGenerator
 
 warnings.filterwarnings('ignore')
 
-mse = nn.MSELoss()
+mse = nn.MSELoss(reduction="sum")
 
 
 def train(train_func, config):
@@ -94,6 +94,7 @@ def train_step(iter, gen, pose_to_camera, pose_to_world, bone_length, inv_intrin
     batchsize = len(real_img) // n_accum_step
 
     loss_recon = 0
+    loss_kl = 0
     fake_img = []
     for i in range(0, len(real_img), batchsize):
         z = enc(real_img[i:i + batchsize])
@@ -111,9 +112,11 @@ def train_step(iter, gen, pose_to_camera, pose_to_world, bone_length, inv_intrin
         fake_img_i, fake_mask_i, fine_weights, fine_depth = gen(pose_to_camera_i, pose_to_world_i,
                                                                 bone_length_i, z, inv_intrinsic_i)
         loss_recon_i = mse(real_img_i, fake_img_i) + mse(real_mask_i, fake_mask_i)
+        loss_kl_i = -0.5 * torch.sum(1 + torch.log(z_std) * 2 - z_mean ** 2 - z_std ** 2)
 
-        loss_recon_i.backward()
+        (loss_recon_i + loss_kl_i).backward()
         loss_recon += loss_recon_i
+        loss_kl += loss_kl_i
 
         fake_img.append(fake_img_i.detach())
     fake_img = torch.cat(fake_img)
@@ -122,7 +125,7 @@ def train_step(iter, gen, pose_to_camera, pose_to_world, bone_length, inv_intrin
         if iter % 100 == 0:
             print(iter)
             write(iter, loss_recon, "loss_recon", writer)
-            # write(iter, loss_bone, "bone_loss", writer)
+            write(iter, loss_kl, "loss_kl", writer)
 
     torch.nn.utils.clip_grad_norm_(gen.parameters(), 5.0)
     gen_optimizer.step()
