@@ -309,10 +309,7 @@ class NeRFBase(nn.Module):
         batchsize, num_bone, _, n = image_coord.shape
         device = image_coord.device
 
-        if self.origin_location == "center":
-            pose_to_camera = torch.cat([pose_to_camera[:, 1:, :, :3],
-                                        (pose_to_camera[:, 1:, :, 3:] +
-                                         pose_to_camera[:, self.parent_id[1:], :, 3:]) / 2], dim=-1)
+        pose_to_camera, bone_length = self.transform_pose(pose_to_camera, bone_length)
 
         if self.coordinate_scale != 1:
             pose_to_camera[:, :, :3, 3] *= self.coordinate_scale
