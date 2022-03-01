@@ -668,6 +668,9 @@ class SSONARFGenerator(nn.Module):
 
         nerf = TriPlaneNeRF if config.use_triplane else SSONARF
         self.nerf = nerf(config.nerf_params, z_dim=20, num_bone=num_bone, bone_length=True,
+
+        self.time_conditional = self.config.nerf_params.time_conditional
+        self.pose_conditional = self.config.nerf_params.pose_conditional
                          parent=parent_id, num_bone_param=num_bone_param, view_dependent=True)
 
     def register_canonical_pose(self, pose: np.ndarray):
