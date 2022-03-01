@@ -14,10 +14,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from NARF.models.loss import SparseLoss
-from NARF.models.model_utils import random_ray_sampler, all_reduce
-from NARF.models.net import NeRFGenerator
+from NARF.models.model_utils import all_reduce
 from NARF.utils import yaml_config, write
-from NARF.visualization_utils import ssim, psnr
+from NARF.visualization_utils import ssim, psnr, lpips
 from dataset import SSODataset
 from models.loss import loss_dist_func
 from models.net import SSONARFGenerator
@@ -60,13 +59,13 @@ def create_dataset(config_dataset, just_cache=False):
 
     print("loading datasets")
     dataset_train = SSODataset(train_dataset_config, size=size, return_bone_params=True,
-                               return_bone_mask=True, random_background=False, just_cache=just_cache,
+                               return_bone_mask=False, random_background=False, just_cache=just_cache,
                                load_camera_intrinsics=True)
     datasets_val = dict()
     for key in val_dataset_config.keys():
         if val_dataset_config[key].data_root is not None:
             datasets_val[key] = SSODataset(val_dataset_config[key], size=size, return_bone_params=True,
-                                           return_bone_mask=True, random_background=False,
+                                           return_bone_mask=False, random_background=False,
                                            num_repeat_in_epoch=1, just_cache=just_cache,
                                            load_camera_intrinsics=True)
 
@@ -81,9 +80,9 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
 
     loss = dict()
 
-    loss_func = {"L2": mse, "SSIM": ssim, "PSNR": psnr}
+    loss_func = {"L2": mse, "SSIM": ssim, "PSNR": psnr, "LPIPS": lpips}
     for key, val_loader in val_loaders.items():
-        if num_data > 1 and key == "train":
+        if num_data != 1 and key == "train":
             continue
         _num_data = len(val_loader.dataset) if num_data is None else min(num_data, len(val_loader.dataset))
         num_data_all = len(val_loader.dataset) if _num_data == 1 else _num_data
@@ -128,7 +127,7 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
                 out_dir = config.out_root
                 out_name = config.out
                 cv2.imwrite(f"{out_dir}/result/{out_name}/{key}_{iter // 5000 * 5000}.png", gen_color)
-            if i == num_data - 1:
+            if i == _num_data - 1:
                 break
         if ddp:
             val_loss_mask = all_reduce(val_loss_mask)
@@ -185,6 +184,7 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
     iter = 0
 
     if config.resume or config.resume_latest:
+        print(config.resume)
         path = f"{out_dir}/result/{out_name}/snapshot_latest.pth" if config.resume_latest else config.resume
         if os.path.exists(path):
             snapshot = torch.load(path, map_location="cuda")
@@ -203,7 +203,7 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
 
             gen_module.load_state_dict(snapshot["gen"], strict=True)
             # gen_optimizer.load_state_dict(snapshot["gen_opt"])
-            iter = snapshot["iteration"]
+            # iter = snapshot["iteration"]
             start_time = snapshot["start_time"]
             del snapshot
 
@@ -336,7 +336,7 @@ def validation_func(config, dataset, data_loader, rank, ddp=False):
         gen = nn.parallel.DistributedDataParallel(gen, device_ids=[rank])
 
     if config.resume or config.resume_latest:
-        path = f"{out_dir}/result/{out_name}/snapshot_100000.pth" if config.resume_latest else config.resume
+        path = f"{out_dir}/result/{out_name}/snapshot_latest.pth" if config.resume_latest else config.resume
         if os.path.exists(path):
             snapshot = torch.load(path, map_location="cuda")
             if ddp:
@@ -350,7 +350,7 @@ def validation_func(config, dataset, data_loader, rank, ddp=False):
 
     _, val_loaders = data_loader
 
-    val_loss = validate(gen, val_loaders, config, ddp, metric=["PSNR", "SSIM"], num_data=400)
+    val_loss = validate(gen, val_loaders, config, ddp, metric=["PSNR", "SSIM", "LPIPS"])
     torch.cuda.empty_cache()
     # write log
     if rank == 0:
