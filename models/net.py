@@ -580,6 +580,8 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         z_dim = config.z_dim
         crop_background = config.crop_background
 
+        if config.nerf_params.origin_location == "center+head":
+            num_bone_param = num_bone
         self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=[z_dim * 2, z_dim], num_bone=num_bone,
                                  bone_length=True,
                                  parent=parent_id, num_bone_param=num_bone_param)

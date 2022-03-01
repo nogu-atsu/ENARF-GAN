@@ -75,7 +75,7 @@ class StyleNeRF(NeRF):
         self.mip_nerf_resolution = config.mip_nerf_resolution
         self.mip_nerf = config.mip_nerf
         assert self.final_activation in ["tanh", "l2", None]
-        assert self.origin_location in ["root", "center"]
+        assert self.origin_location in ["root", "center", "center_fixed", "center+head"]
         assert self.origin_location == "root" or parent is not None
         assert (self.mip_nerf_resolution is not None) == self.config.mip_nerf
 
@@ -106,7 +106,7 @@ class StyleNeRF(NeRF):
         self.num_frequency_for_other = nffo
 
         self.hidden_size = hidden_size
-        self.num_bone = num_bone - 1 if self.origin_location == "center" else num_bone
+        self.num_bone = num_bone - 1 if self.origin_location in ["center", "center_fixed"] else num_bone
         self.num_bone_param = num_bone_param if num_bone_param is not None else num_bone
         self.z_dim = z_dim * 2  # TODO fix this
 
@@ -440,7 +440,7 @@ class TriPlaneNeRF(NeRFBase):
         # self.mip_nerf_resolution = config.mip_nerf_resolution
         # self.mip_nerf = config.mip_nerf
         # assert self.final_activation in ["tanh", "l2", None]
-        assert self.origin_location == "center"
+        assert self.origin_location in ["center", "center_fixed", "center+head"]
         assert parent is not None
         # assert (self.mip_nerf_resolution is not None) == self.config.mip_nerf
 
@@ -464,7 +464,7 @@ class TriPlaneNeRF(NeRFBase):
         self.num_frequency_for_other = nffo
 
         self.hidden_size = hidden_size
-        self.num_bone = num_bone - 1
+        self.num_bone = num_bone - 1 if self.origin_location in ["center", "center_fixed"] else num_bone
         self.num_bone_param = num_bone_param if num_bone_param is not None else num_bone
         assert self.num_bone == self.num_bone_param
         if type(z_dim) == list:
@@ -558,7 +558,7 @@ class TriPlaneNeRF(NeRFBase):
         Returns:
 
         """
-        assert self.origin_location == "center"
+        assert self.origin_location in ["center", "center_fixed", "center+head"]
         coordinate = pose[:, :3, 3]
         length = np.linalg.norm(coordinate[1:] - coordinate[self.parent_id[1:]], axis=1)  # (23, )
 
@@ -567,10 +567,22 @@ class TriPlaneNeRF(NeRFBase):
         self.register_buffer('canonical_joints', torch.tensor(canonical_joints, dtype=torch.float32))
         self.register_buffer('canonical_parent_joints', torch.tensor(canonical_parent_joints, dtype=torch.float32))
 
-        # move origins to parts' center (self.origin_location == "center)
-        pose = np.concatenate([pose[1:, :, :3],
-                               (pose[1:, :, 3:] +
-                                pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
+        if self.origin_location == "center":
+            # move origins to parts' center (self.origin_location == "center)
+            pose = np.concatenate([pose[1:, :, :3],
+                                   (pose[1:, :, 3:] +
+                                    pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
+        elif self.origin_location == "center_fixed":
+            pose = np.concatenate([pose[self.parent_id[1:], :, :3],
+                                   (pose[1:, :, 3:] +
+                                    pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
+        elif self.origin_location == "center+head":
+            length = np.concatenate([length, np.ones(1,)])  # (24,)
+            head_id = 15
+            _pose = np.concatenate([pose[self.parent_id[1:], :, :3],
+                                    (pose[1:, :, 3:] +
+                                     pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
+            pose = np.concatenate([_pose, pose[head_id][None]])  # (24, 4, 4)
 
         self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
@@ -840,7 +852,7 @@ class SSONARF(NeRFBase):
         self.origin_location = config.origin_location
         self.coordinate_scale = config.coordinate_scale
         # assert self.final_activation in ["tanh", "l2", None]
-        assert self.origin_location == "center"
+        assert self.origin_location in ["center", "center_fixed", "center+head"]
         assert parent is not None
 
         # dim = 3  # xyz

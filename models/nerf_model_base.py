@@ -273,6 +273,27 @@ class NeRFBase(nn.Module):
         """
         raise NotImplementedError()
 
+    def transform_pose(self, pose_to_camera, bone_length):
+        if self.origin_location == "center":
+            pose_to_camera = torch.cat([pose_to_camera[:, 1:, :, :3],
+                                        (pose_to_camera[:, 1:, :, 3:] +
+                                         pose_to_camera[:, self.parent_id[1:], :, 3:]) / 2], dim=-1)
+        elif self.origin_location == "center_fixed":
+            pose_to_camera = torch.cat([pose_to_camera[:, self.parent_id[1:], :, :3],
+                                        (pose_to_camera[:, 1:, :, 3:] +
+                                         pose_to_camera[:, self.parent_id[1:], :, 3:]) / 2], dim=-1)
+
+        elif self.origin_location == "center+head":
+            bone_length = torch.cat([bone_length, torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
+                                    dim=1)  # (B, 24)
+            head_id = 15
+            _pose_to_camera = torch.cat([pose_to_camera[:, self.parent_id[1:], :, :3],
+                                         (pose_to_camera[:, 1:, :, 3:] +
+                                          pose_to_camera[:, self.parent_id[1:], :, 3:]) / 2],
+                                        dim=-1)  # (B, 23, 4, 4)
+            pose_to_camera = torch.cat([_pose_to_camera, pose_to_camera[:, head_id][:, None]], dim=1)  # (B, 24, 4, 4)
+        return pose_to_camera, bone_length
+
     def render(self, image_coord: torch.tensor, pose_to_camera: torch.tensor, inv_intrinsics: torch.tensor,
                z: torch.tensor, z_rend: torch.tensor, bone_length: torch.tensor,
                thres: float = 0.0, render_scale: float = 1, Nc: int = 64, Nf: int = 128,
@@ -478,7 +499,13 @@ class NeRFBase(nn.Module):
 
         with torch.no_grad():
             if self.tri_plane_based:
-                tri_plane_feature = self.compute_tri_plane_feature(z, bone_length)
+                if self.origin_location == "center+head":
+                    _bone_length = torch.cat([bone_length,
+                                             torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
+                                            dim=1)  # (B, 24)
+                else:
+                    _bone_length = bone_length
+                tri_plane_feature = self.compute_tri_plane_feature(z, _bone_length)
             else:
                 tri_plane_feature = None
 
