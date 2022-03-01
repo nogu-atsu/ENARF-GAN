@@ -219,11 +219,11 @@ def merge_all_cache(person_ids, mode="train"):
 
 
 def preprocess():
-    save_cache(train_person_ids)
-    save_cache(test_person_ids)
-
-    merge_all_cache(train_person_ids, "train")
-    merge_all_cache(test_person_ids, "test")
+    # save_cache(train_person_ids)
+    # save_cache(test_person_ids)
+    #
+    # merge_all_cache(train_person_ids, "train")
+    # merge_all_cache(test_person_ids, "test")
     merge_all_cache(train_person_ids + test_person_ids, "all")
 
 

@@ -104,6 +104,7 @@ loss:
   tri_plane_mask_reg_coef: 0
   pseudo_mask_reg_coef: 0
   mask_derivative_reg_coef: 0
+  tri_plane_square_reg_coef: 0
 
 consistency_regularization: False
 replace: True

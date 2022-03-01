@@ -1,19 +1,12 @@
+import glob
 import os
-
-import cv2
-import numpy as np
-import pickle
-import glob
-import scipy.io
-import matplotlib.pyplot as plt
-import smplx
-
-import glob
 import pickle
 import sys
-import blosc
 
+import blosc
+import cv2
 import numpy as np
+import scipy.io
 import torch
 from smplx.body_models import SMPL
 from tqdm import tqdm
@@ -22,11 +15,18 @@ sys.path.append("../../")
 from utils.smpl_utils import get_pose
 
 
-def read_frame(video_path):
+def read_frame(video_path, return_mask=False):
     cap = cv2.VideoCapture(video_path)
     ret, frame = cap.read()
     cap.release()
-    return frame
+
+    if return_mask:
+        mask = scipy.io.loadmat(video_path[:-4] + "_segm.mat", squeeze_me=True)
+        mask = mask["segm_1"] > 0
+        frame = frame * mask[:, :, None]
+        return frame, mask
+    else:
+        return frame, None
 
 
 def read_annots(video_path):
@@ -36,7 +36,7 @@ def read_annots(video_path):
 
 
 def preprocess(path):
-    frame = read_frame(path)
+    frame, mask = read_frame(path, SEGMENTATION)
     annot = read_annots(path)
     gender = ["female", "male"][annot["gender"][0, 0]]
     poses = annot["pose"]
@@ -55,7 +55,7 @@ def preprocess(path):
                       [0, 0, 0, 1]])
     A_new = np.matmul(trans, A)
 
-    if annot["joints3D"].ndim !=3:
+    if annot["joints3D"].ndim != 3:
         return None, None, None
     # shift
     joints3D = annot["joints3D"][:, :, 0]
@@ -85,10 +85,15 @@ def preprocess(path):
     y1, y2 = center[1] - CROP_SIZE // 2, center[1] + CROP_SIZE // 2
 
     cropped_frame = frame[y1:y2, x1:x2]
+    resized_frame = cv2.resize(cropped_frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
+
+    if SEGMENTATION:
+        cropped_mask = mask[y1:y2, x1:x2].astype("uint8")
+        resized_mask = cv2.resize(cropped_mask, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_NEAREST)
+        resized_frame = np.concatenate([resized_mask[:, :, None], resized_frame], axis=-1)
+
     cropped_K = K.copy()
     cropped_K[:2, 2] -= np.array([x1, y1])
-
-    resized_frame = cv2.resize(cropped_frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
     resized_K = cropped_K.copy()
     resized_K[:2] *= IMG_SIZE / CROP_SIZE
     return resized_frame, resized_K, A_new
@@ -97,6 +102,7 @@ def preprocess(path):
 if __name__ == "__main__":
     IMG_SIZE = 128
     CROP_SIZE = 180
+    SEGMENTATION = True
     SMPL_MODEL = {"male": SMPL(model_path="../../smpl_data", gender="male"),
                   "female": SMPL(model_path="../../smpl_data", gender="female")}
     DATA_ROOT = "/data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/"
@@ -123,6 +129,13 @@ if __name__ == "__main__":
              "camera_intrinsic": intrinsic_cache,
              "smpl_pose": pose_cache}
 
-    os.makedirs(f"{DATA_ROOT}/NARF_GAN_cache", exist_ok=True)
-    with open(f"{DATA_ROOT}/NARF_GAN_cache/cache.pickle", "wb") as f:
+    if SEGMENTATION:
+        cache_dir_name = "NARF_GAN_segmented_cache"
+    else:
+        cache_dir_name = "NARF_GAN_cache"
+    os.makedirs(f"{DATA_ROOT}/{cache_dir_name}", exist_ok=True)
+    with open(f"{DATA_ROOT}/{cache_dir_name}/cache.pickle", "wb") as f:
         pickle.dump(cache, f)
+
+    np.save(f"{DATA_ROOT}/{cache_dir_name}/canonical.npy",
+            np.load("../../smpl_data/neutral_canonical.npy"))

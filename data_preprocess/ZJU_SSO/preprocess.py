@@ -103,11 +103,11 @@ def preprocess(config):
     training_view = config["training_view"]
     testing_view = [i for i in range(n_camera) if i not in training_view]
 
-    save_cache(person_id, n_train_frame, training_view, image_paths, K, R, T, D, smpl, prefix="train")
-    save_cache(person_id, n_train_frame, testing_view, image_paths, K, R, T, D, smpl, prefix="test_novel_view",
-               interval=30)
+    # save_cache(person_id, n_train_frame, training_view, image_paths, K, R, T, D, smpl, prefix="train")
+    # save_cache(person_id, n_train_frame, testing_view, image_paths, K, R, T, D, smpl, prefix="test_novel_view",
+    #            interval=30)
     save_cache(person_id, n_test_frame, testing_view, image_paths, K, R, T, D, smpl, prefix="test_novel_pose",
-               interval=30)
+               interval=30, start_frame_idx=n_train_frame)
 
 
 if __name__ == "__main__":
@@ -116,9 +116,12 @@ if __name__ == "__main__":
     IMAGE_SIZE = 512
 
     configs = [
-        {"person_id": "313", "n_train_frame": 60, "n_test_frame": 1000, "training_view": [0, 6, 12, 18]},
-        {"person_id": "315", "n_train_frame": 2085, "n_test_frame": 100, "training_view": [0, 6, 12, 18]},
-        {"person_id": "377", "n_train_frame": 517, "n_test_frame": 100, "training_view": [0, 6, 12, 18]},
+        # {"person_id": "313", "n_train_frame": 1176, "n_test_frame": 294, "training_view": [0, 6, 12, 18]},
+        # {"person_id": "315", "n_train_frame": 1748, "n_test_frame": 437, "training_view": [0, 6, 12, 18]},
+        # {"person_id": "377", "n_train_frame": 517, "n_test_frame": 100, "training_view": [0, 6, 12, 18]},
+        # {"person_id": "386", "n_train_frame": 516, "n_test_frame": 130, "training_view": [0, 6, 12, 18]},
+        {"person_id": "315", "n_train_frame": 2058, "n_test_frame": 100, "training_view": [0, 6, 12, 18]},
     ]
     for conf in configs:
         preprocess(conf)
+
