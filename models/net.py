@@ -693,6 +693,33 @@ class SSONARFGenerator(nn.Module):
         encoded = torch.cat([torch.cos(x), torch.sin(x)], dim=1)
         return encoded
 
+    @staticmethod
+    def pose_encoding(pose: torch.Tensor):
+        """
+
+        :param pose: (B, num_bone, 4, 4)
+        :return: (B, (num_bone - 1) * 3)
+        """
+        rot = pose[:, 1:, :3, :3]
+        root_rot = pose[:, :1, :3, :3]
+
+        encoded = torch.matmul(root_rot.permute(0, 1, 3, 2), rot)  # (B, num_bone - 1, 3, 3)
+        return encoded.reshape(encoded.shape[0], -1)  # (B, (num_bone - 1) * 9)
+
+    def get_latents(self, frame_time: torch.Tensor, pose_to_camera: torch.Tensor):
+        zs = []
+        if self.time_conditional:
+            zs.append(self.positional_encoding(frame_time, num_frequency=10))
+        if self.pose_conditional:
+            zs.append(self.pose_encoding(pose_to_camera))
+
+        assert len(zs) > 0
+
+        z = torch.cat(zs, dim=1)
+
+        z1 = z2 = z
+        return z1, z2
+
     def forward(self, pose_to_camera, camera_pose, mask, frame_time, bone_length, inv_intrinsics,
                 background: Optional[float] = None):
         """
@@ -714,7 +741,7 @@ class SSONARFGenerator(nn.Module):
         grid, img_coord = self.ray_sampler(mask, ray_batchsize)
 
         # sparse rendering
-        z1 = z2 = self.positional_encoding(frame_time, num_frequency=10)
+        z1, z2 = self.get_latents(frame_time, pose_to_camera)
 
         # TODO: randomly replace z1 during training
         rendered_color, rendered_mask = self.nerf(batchsize, img_coord,
@@ -747,7 +774,7 @@ class SSONARFGenerator(nn.Module):
         :return:
         """
         # sparse rendering
-        z1 = z2 = self.positional_encoding(frame_time, num_frequency=10)
+        z1, z2 = self.get_latents(frame_time, pose_to_camera)
         return self.nerf.render_entire_img(pose_to_camera, inv_intrinsics, z1, z2, bone_length,
                                            camera_pose, render_size, self.config.nerf_params.Nc,
                                            self.config.nerf_params.Nf, semantic_map,
