@@ -671,7 +671,8 @@ class SSONARFGenerator(nn.Module):
                          parent=parent_id, num_bone_param=num_bone_param, view_dependent=True)
 
     def register_canonical_pose(self, pose: np.ndarray):
-        self.nerf.register_canonical_pose(pose)
+        if hasattr(self.nerf, "register_canonical_pose"):
+            self.nerf.register_canonical_pose(pose)
 
     @property
     def memory_cost(self):
