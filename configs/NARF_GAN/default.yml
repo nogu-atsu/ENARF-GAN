@@ -82,6 +82,8 @@ generator_params:
     constant_trimask: False  # only tri-plane mask is constant
     constant_trimask_lr_mul: 1  # learning rate scale of tri-plane mask
     deformation_field: False
+    selector_mlp: False
+    no_selector: False
 
 discriminator_params:
   minibatch_std: True

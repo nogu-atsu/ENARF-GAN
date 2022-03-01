@@ -479,6 +479,8 @@ class TriPlaneNeRF(NeRFBase):
         self.fc_bone_length = torch.jit.script(
             StyledConv1d(self.num_frequency_for_other * 2 * self.num_bone_param,
                          self.z_dim, self.z_dim))
+
+        self.no_selector = self.config.no_selector
         if self.config.constant_triplane:
             self.tri_plane = nn.Parameter(torch.zeros(1, 32 * 3 + self.num_bone * 3, 256, 256))
             self.tri_plane_gen = lambda z, *args, **kwargs: self.tri_plane.expand(z.shape[0], -1, -1, -1)
@@ -668,8 +670,10 @@ class TriPlaneNeRF(NeRFBase):
     def calc_weight(self, tri_plane_weights: torch.Tensor, position: torch.Tensor, position_validity: torch.Tensor,
                     mode="prod"):
         bs, n_bone, _, n = position.shape
+        if self.no_selector:
+            weight = torch.ones(bs, n_bone, n, device=position.device) / n_bone
 
-        if hasattr(self, "selector"):  # use selector
+        elif hasattr(self, "selector"):  # use selector
             position = position.reshape(bs, n_bone * 3, n)
             encoded_p = encode(position, self.num_frequency_for_position, self.num_bone)
             h = self.selector(encoded_p)
