@@ -1,0 +1,50 @@
+# NARF + Neural Rendering + GAN
+# paths
+out_root: /data/unagi0/noguchi/D1/NARF_GAN
+out: THUman/VAE/20220228_surreal_triplane_centerFixed_mask
+
+dataset:
+  name: human_v2
+  bs: 12  # batchsize
+  image_size: 128
+  train:
+    data_root: /data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/NARF_GAN_segmented_cache  # <- need change
+
+generator_params:
+  z_dim: 256
+  background_ratio: 0.7
+  use_triplane: True
+  crop_background: True
+  nerf_params:
+    hidden_size: 256  # hidden size of NeRF
+    Nc: 48  # number of points for coarse sampling
+    Nf: 64  # number of points for fine sampling
+    density_activation: MyReLU
+    # concat model
+    origin_location: center_fixed  # origin of local coordinate, root or center
+    coordinate_scale: 3
+
+
+loss:
+  bone_guided_coef: 10
+  nerf_coef: 1
+  color_coef: 1
+  mask_coef: 3
+  push_to_background_coef: 5
+  nerf_loss_type: mse
+  ignore_boundary: False
+  suppress_small: False
+
+consistency_regularization: False
+replace: True
+mix_nerf_and_cnn: True
+start_replace: 4000
+start_gen_training: 0
+consistency_regularization_coef: 0.0
+nerf_only: True
+n_accum_step: 1
+
+num_iter: 800000
+
+# snapshots
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220224_surreal_triplane/snapshot_latest.pth
