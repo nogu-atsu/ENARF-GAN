@@ -34,8 +34,8 @@ def main():
         all_poses.append(poses)
         all_betas.append(betas)
 
-    all_poses = np.concatenate(all_poses)  # (n, 72)
-    all_betas = np.concatenate(all_betas)  # (n,)
+    all_poses = np.concatenate(all_poses)  # (n, 24, 3)
+    all_betas = np.concatenate(all_betas)  # (n, 10)
 
     mean_pose = np.mean(all_poses, axis=0)
     mean_beta = np.mean(all_betas, axis=0)
@@ -65,8 +65,8 @@ def main():
     z_axis = sampled_pose_3d[:, 0, :3, 3] - foot_middle
     z_axis = z_axis / np.linalg.norm(z_axis, axis=1)[:, None]
     new_axis = np.array([1, 0, 0])
-    y_axis = new_axis - np.dot(z_axis, np.array([1, 0, 0]))[:, None] * z_axis
-    y_axis = y_axis / np.linalg.norm(z_axis, axis=1)[:, None]
+    y_axis = new_axis - np.dot(z_axis, new_axis)[:, None] * z_axis
+    y_axis = y_axis / np.linalg.norm(y_axis, axis=1)[:, None]
     x_axis = np.cross(y_axis, z_axis)
 
     rot = np.stack([x_axis, y_axis, z_axis], axis=1)
