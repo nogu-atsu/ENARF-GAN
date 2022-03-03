@@ -14,6 +14,11 @@ from tqdm import tqdm
 sys.path.append("../../")
 from utils.smpl_utils import get_pose
 
+IMG_SIZE = 128
+CROP_SIZE = 180
+SMPL_MODEL = {"male": SMPL(model_path="../../smpl_data", gender="male"),
+              "female": SMPL(model_path="../../smpl_data", gender="female")}
+DATA_ROOT = "/data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/"
 
 def read_frame(video_path, return_mask=False):
     cap = cv2.VideoCapture(video_path)
@@ -35,8 +40,7 @@ def read_annots(video_path):
     return mat
 
 
-def preprocess(path):
-    frame, mask = read_frame(path, SEGMENTATION)
+def read_pose_and_crop(path):
     annot = read_annots(path)
     gender = ["female", "male"][annot["gender"][0, 0]]
     poses = annot["pose"]
@@ -84,6 +88,16 @@ def preprocess(path):
     x1, x2 = center[0] - CROP_SIZE // 2, center[0] + CROP_SIZE // 2
     y1, y2 = center[1] - CROP_SIZE // 2, center[1] + CROP_SIZE // 2
 
+    cropped_K = K.copy()
+    cropped_K[:2, 2] -= np.array([x1, y1])
+    resized_K = cropped_K.copy()
+    resized_K[:2] *= IMG_SIZE / CROP_SIZE
+    return x1, x2, y1, y2, A_new, resized_K
+
+
+def preprocess(path):
+    frame, mask = read_frame(path, SEGMENTATION)
+    x1, x2, y1, y2, A_new, resized_K = read_pose_and_crop(path)
     cropped_frame = frame[y1:y2, x1:x2]
     resized_frame = cv2.resize(cropped_frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
 
@@ -92,20 +106,11 @@ def preprocess(path):
         resized_mask = cv2.resize(cropped_mask, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_NEAREST)
         resized_frame = np.concatenate([resized_mask[:, :, None], resized_frame], axis=-1)
 
-    cropped_K = K.copy()
-    cropped_K[:2, 2] -= np.array([x1, y1])
-    resized_K = cropped_K.copy()
-    resized_K[:2] *= IMG_SIZE / CROP_SIZE
     return resized_frame, resized_K, A_new
 
 
 if __name__ == "__main__":
-    IMG_SIZE = 128
-    CROP_SIZE = 180
     SEGMENTATION = True
-    SMPL_MODEL = {"male": SMPL(model_path="../../smpl_data", gender="male"),
-                  "female": SMPL(model_path="../../smpl_data", gender="female")}
-    DATA_ROOT = "/data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/"
 
     video_path = glob.glob(f"{DATA_ROOT}/*/*/*/*.mp4")
     print(len(video_path))
