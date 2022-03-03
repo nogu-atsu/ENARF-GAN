@@ -105,16 +105,11 @@ def prepare_models(gen_config, dis_config, pose_dataset, size):
     return gen, dis
 
 
-def train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length, inv_intrinsic,
-               bone_loss_func, bone_mask, dis, ddp, world_size, gen_optimizer, dis_optimizer,
-               adv_loss_type, rank, writer, real_img, r1_loss_coef):
-    # randomly sample latent
-    z = torch.cuda.FloatTensor(batchsize, config.generator_params.z_dim * 4).normal_()
-
-    fake_img, fake_low_res_mask, fine_weights, fine_depth = gen(pose_to_camera, pose_to_world,
-                                                                bone_length, z, inv_intrinsic)
-
-    background_ratio = gen.background_ratio
+def loss(gen, dis, batchsize, fake_img, fake_low_res_mask, fine_weights, fine_depth, bone_mask, background_ratio,
+         bone_loss_func, gen_optimizer, dis_optimizer, adv_loss_type, ddp,
+         world_size):
+    loss_dict = {}
+    print(config.loss.bone_guided_coef, background_ratio)
     loss_bone = bone_loss_func(fake_low_res_mask, bone_mask,
                                background_ratio) * config.loss.bone_guided_coef
 
@@ -127,6 +122,7 @@ def train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length,
     if config.loss.surface_reg_coef > 0:
         loss_dist = loss_dist_func(fine_weights, fine_depth)
         loss_gen += loss_dist * config.loss.surface_reg_coef
+        loss_dict["loss_dist"] = loss_dist
 
     if config.loss.tri_plane_reg_coef > 0:
         loss_triplane = gen.nerf.buffers_tensors["tri_plane_feature"].square().mean()
@@ -203,21 +199,47 @@ def train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length,
 
         loss_mask_derivative_reg = (dxy * xy).clamp_min(-0.8).sum(dim=3).mean()
         loss_gen += loss_mask_derivative_reg * config.loss.mask_derivative_reg_coef
+    loss_dict["adv_loss_gen"] = loss_adv_gen
+    loss_dict["bone_loss"] = loss_bone
+    return loss_gen, loss_dict
+
+
+def train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length, inv_intrinsic,
+               bone_loss_func, bone_mask, dis, ddp, world_size, gen_optimizer, dis_optimizer,
+               adv_loss_type, rank, writer, real_img, r1_loss_coef):
+    n_accum_step = config.n_accum_step
+    forward_bs = batchsize // n_accum_step
+    fake_img = []
+
+    dis.requires_grad_(False)
+    for i in range(0, batchsize, forward_bs):
+        # randomly sample latent
+        z = torch.cuda.FloatTensor(forward_bs, config.generator_params.z_dim * 4).normal_()
+
+        fake_img_i, fake_mask_i, fine_weights, fine_depth = gen(pose_to_camera[i:i + forward_bs],
+                                                                pose_to_world[i:i + forward_bs],
+                                                                bone_length[i:i + forward_bs], z,
+                                                                inv_intrinsic[i:i + forward_bs])
+
+        background_ratio = gen.background_ratio
+
+        loss_gen, loss_dict = loss(gen, dis, batchsize, fake_img_i, fake_mask_i, fine_weights, fine_depth,
+                                   bone_mask[i:i + forward_bs], background_ratio, bone_loss_func, gen_optimizer,
+                                   dis_optimizer, adv_loss_type, ddp, world_size)
+
+        loss_gen.backward()
+
+        fake_img.append(fake_img_i)
+
+    fake_img = torch.cat(fake_img)
+
+    gen_optimizer.step()
 
     if rank == 0:
         if iter % 100 == 0:
             print(iter)
-            write(iter, loss_adv_gen, "adv_loss_gen", writer)
-            write(iter, loss_bone, "bone_loss", writer)
-            if config.loss.surface_reg_coef > 0:
-                write(iter, loss_dist, "loss_dist", writer)
-
-    if iter + 1 > config.start_gen_training:
-        loss_gen.backward()
-        torch.nn.utils.clip_grad_norm_(gen.parameters(), 5.0)
-        gen_optimizer.step()
-    else:
-        loss_gen.backward()
+            for k, v in loss_dict.items():
+                write(iter, v, k, writer)
 
     # torch.cuda.empty_cache()
 
