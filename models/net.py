@@ -177,7 +177,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         return self.nerf.flops
 
     def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
-                return_intermediate=False, nerf_scale=1):
+                return_intermediate=False, nerf_scale=1, *args, **kwargs):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -611,7 +611,7 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         return self.nerf.flops
 
     def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
-                return_intermediate=False, truncation_psi=1):
+                return_intermediate=False, truncation_psi=1, black_bg_if_possible=False):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -652,7 +652,7 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         fg_color = fg_color.reshape(batchsize, 3, self.size, self.size)
         fg_mask = fg_mask.reshape(batchsize, self.size, self.size)
 
-        if not self.black_background:
+        if not self.black_background and not black_bg_if_possible:
             n_latent = self.background_generator.n_latent
             bg_color, _ = self.background_generator([z_for_background, z_for_neural_render], inject_index=n_latent - 4)
         else:
