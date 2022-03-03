@@ -1,4 +1,5 @@
 import argparse
+import warnings
 
 from cleanfid.fid import *
 from torch.utils.data import DataLoader
@@ -7,16 +8,19 @@ from tqdm import tqdm
 sys.path.append(".")
 from NARF.utils import yaml_config
 from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
-from models.net import NeRFNRGenerator
+from models.net import NeRFNRGenerator, TriNeRFGenerator
+
+warnings.filterwarnings('ignore')
 
 
 class GenIterator:
-    def __init__(self, gen, dataloader, num_sample):
+    def __init__(self, gen, dataloader, num_sample, black_bg_if_possible=False):
         self.gen = gen
         self.dataloader = dataloader
         self.batch_size = dataloader.batch_size
         self.num_sample = num_sample
         self.i = 0
+        self.black_bg_if_possible = black_bg_if_possible
         assert len(dataloader.dataset) > 0
         assert len(dataloader.dataset) >= num_sample
 
@@ -40,7 +44,9 @@ class GenIterator:
         minibatch = self.data.__next__()  # randomly sample latent
 
         batchsize = len(minibatch["pose_to_camera"])
-        z = torch.cuda.FloatTensor(batchsize, self.gen.config.z_dim * 4).normal_()
+
+        z_dim = self.gen.config.z_dim * 3 if is_VAE else self.gen.config.z_dim * 4
+        z = torch.cuda.FloatTensor(batchsize, z_dim).normal_()
 
         pose_to_camera = minibatch["pose_to_camera"].cuda(non_blocking=True)
         bone_length = minibatch["bone_length"].cuda(non_blocking=True)
@@ -48,14 +54,17 @@ class GenIterator:
         intrinsic = minibatch["intrinsics"].cuda(non_blocking=True)
         inv_intrinsic = torch.inverse(intrinsic)
         with torch.no_grad():
-            fake_img, _, _, _ = self.gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic)
+            fake_img, _, _, _ = self.gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic,
+                                         black_bg_if_possible=self.black_bg_if_possible)
         self.i += 1
         return torch.clamp(fake_img, -1, 1)
 
 
-def data_iterator(loader):
-    for data in loader:
+def data_iterator(loader, n_batch):
+    for i, data in enumerate(loader):
         yield data["img"].float()
+        if i == (n_batch - 1):
+            break
 
 
 """
@@ -75,25 +84,33 @@ def get_model_features_from_imgs(data_iterator, model, mode="clean", batch_size=
             img_batch = img_batch * 127.5 + 127.5
 
             # split into individual batches for resizing if needed
-            if mode != "legacy_tensorflow":
-                resized_batch = torch.zeros(batch_size, 3, 299, 299)
-                for idx in range(len(img_batch)):
-                    curr_img = img_batch[idx]
-                    img_np = curr_img.cpu().numpy().transpose((1, 2, 0))
-                    img_resize = fn_resize(img_np)
-                    resized_batch[idx] = torch.tensor(img_resize.transpose((2, 0, 1)))
-            else:
-                resized_batch = img_batch
+            resized_batch = F.interpolate(img_batch, (299, 299), mode="bilinear")
+            # if mode != "legacy_tensorflow":
+            #     resized_batch = torch.zeros(batch_size, 3, 299, 299)
+            #     for idx in range(len(img_batch)):
+            #         curr_img = img_batch[idx]
+            #         img_np = curr_img.cpu().numpy().transpose((1, 2, 0))
+            #         img_resize = fn_resize(img_np)
+            #         resized_batch[idx] = torch.tensor(img_resize.transpose((2, 0, 1)))
+            # else:
+            #     resized_batch = img_batch
             feat = get_batch_features(resized_batch, model, device)
         l_feats.append(feat)
     np_feats = np.concatenate(l_feats)
     return np_feats
 
 
-def load_statistics(config, feat_model, mode, batch_size, device, desc):
+def load_statistics(config, feat_model, mode, batch_size, device, desc, num_sample):
+    data_root = config.train.data_root
+
+    # black_bg is supported for surreal
+    if args.black_bg:
+        assert "SURREAL" in data_root
+        data_root = "/data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/NARF_GAN_segmented_cache"
+
     # statistics are already computed
-    mu_path = f"{config.train.data_root}/fid_statistics/mu.npy"
-    sigma_path = f"{config.train.data_root}/fid_statistics/sigma.npy"
+    mu_path = f"{data_root}/fid_statistics/mu_{num_sample}.npy"
+    sigma_path = f"{data_root}/fid_statistics/sigma_{num_sample}.npy"
     if os.path.exists(mu_path):
         mu = np.load(mu_path)
         sigma = np.load(sigma_path)
@@ -115,15 +132,14 @@ def load_statistics(config, feat_model, mode, batch_size, device, desc):
         # TODO mixed prior
         img_dataset = HumanDataset(train_dataset_config, size=size, return_bone_params=False,
                                    just_cache=just_cache)
-
         pose_prior_root = train_dataset_config.pose_prior_root or train_dataset_config.data_root
         print("pose prior:", pose_prior_root)
     else:
         raise ValueError()
     img_dataset.num_repeat_in_epoch = 1
-    loader_img = DataLoader(img_dataset, batch_size=batch_size, num_workers=2, shuffle=False,
+    loader_img = DataLoader(img_dataset, batch_size=batch_size, num_workers=2, shuffle=True,
                             drop_last=False)
-    loader_img = data_iterator(loader_img)
+    loader_img = data_iterator(loader_img, num_sample // batch_size)
     mu, sigma = calc_statistics(loader_img, feat_model, mode, batch_size, device, desc)
 
     # save statistics
@@ -141,11 +157,12 @@ def calc_statistics(iterator, feat_model, mode, batch_size, device, desc):
     return mu, sigma
 
 
-def my_fid_func(config, mode="clean", batch_size=4, num_sample=10_000,
+def my_fid_func(config, mode="legacy_pytorch", batch_size=4, num_sample=10_000,
                 device=torch.device("cuda"), desc="FID model: "):
     size = config.dataset.image_size
     dataset_name = config.dataset.name
     train_dataset_config = config.dataset.train
+
     just_cache = False
 
     print("loading datasets")
@@ -161,15 +178,26 @@ def my_fid_func(config, mode="clean", batch_size=4, num_sample=10_000,
         pose_dataset = HumanPoseDataset(size=size, data_root=pose_prior_root,
                                         just_cache=just_cache)
 
+
     else:
         assert False
     # pose_dataset.num_repeat_in_epoch = 1
     loader_pose = DataLoader(pose_dataset, batch_size=batch_size, num_workers=2, shuffle=True,
                              drop_last=True)
 
-    gen = NeRFNRGenerator(config.generator_params, pose_dataset.size,
-                          num_bone=pose_dataset.num_bone,
-                          num_bone_param=pose_dataset.num_bone_param).to("cuda").eval()
+    gen_config = config.generator_params
+
+    if gen_config.use_triplane:
+        gen = TriNeRFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+                               num_bone_param=pose_dataset.num_bone_param,
+                               parent_id=pose_dataset.parents,
+                               black_background=is_VAE)
+        gen.register_canonical_pose(pose_dataset.canonical_pose)
+        gen.to("cuda")
+    else:
+        gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+                              num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents).to("cuda")
+
     out_dir = config.out_root
     out_name = config.out
     iteration = args.iteration if args.iteration > 0 else "latest"
@@ -184,15 +212,24 @@ def my_fid_func(config, mode="clean", batch_size=4, num_sample=10_000,
     else:
         assert False, "pretrained model is not loading"
 
-    gen = GenIterator(gen, loader_pose, num_sample=num_sample)
+    gen = GenIterator(gen, loader_pose, num_sample=num_sample, black_bg_if_possible=args.black_bg)
 
     feat_model = build_feature_extractor(mode, device)
 
-    ref_mu, ref_sigma = load_statistics(config.dataset, feat_model, mode, batch_size, device, desc)
+    ref_mu, ref_sigma = load_statistics(config.dataset, feat_model, mode, batch_size, device, desc, num_sample)
 
     mu, sigma = calc_statistics(gen, feat_model, mode, batch_size, device, desc)
     fid = frechet_distance(mu, sigma, ref_mu, ref_sigma)
-    print("fid:", fid)
+
+    if args.black_bg:
+        print(args.config, "black fid:", fid)
+        with open(f"{out_dir}/result/{out_name}/black_fid.txt", "w") as f:
+            f.write(f"{fid}")
+    else:
+        print(args.config, "fid:", fid)
+        with open(f"{out_dir}/result/{out_name}/fid.txt", "w") as f:
+            f.write(f"{fid}")
+
     return fid
 
 
@@ -202,9 +239,11 @@ if __name__ == "__main__":
     parser.add_argument('--default_config', type=str, default="configs/NARF_GAN/default.yml")
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--iteration', type=int, default=-1)
+    parser.add_argument('--black_bg', action="store_true")
 
     args = parser.parse_args()
 
     config = yaml_config(args.config, args.default_config, num_workers=args.num_workers)
+    is_VAE = "VAE" in args.config
 
     my_fid_func(config)
