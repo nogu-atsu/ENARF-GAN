@@ -840,3 +840,42 @@ class HumanPoseDataset(THUmanPoseDataset):
             "intrinsics": intrinsics.astype("float32"),  # (3, 3)
         }
         return return_dict
+
+
+class SurrealPoseDepthDataset(HumanDataset):
+    def __init__(self, config, size=128, return_bone_params=True,
+                 return_bone_mask=False, num_repeat_in_epoch=1, just_cache=False, load_camera_intrinsics=True,
+                 **kwargs):
+        super(SurrealPoseDepthDataset, self).__init__(config, size, return_bone_params, return_bone_mask,
+                                                      num_repeat_in_epoch,
+                                                      just_cache, load_camera_intrinsics)
+
+    def load_cache(self):
+        cache_path = f"{self.data_root}/cache.pickle"
+        assert os.path.exists(cache_path)
+        with open(cache_path, "rb") as f:
+            data_dict = pickle.load(f)
+
+        self.imgs = data_dict["disparity"]
+        assert blosc.unpack_array(self.imgs[0]).shape[-1] == self.size
+        if self.return_bone_params:
+            camera_intrinsic = data_dict["camera_intrinsic"] if self.load_camera_intrinsics else None
+            smpl_pose = data_dict["smpl_pose"]
+
+            self.intrinsics = camera_intrinsic
+            self.inv_intrinsics = np.linalg.inv(camera_intrinsic)
+            self.pose_to_world = smpl_pose
+
+            self.pose_to_camera = self.pose_to_world
+
+            # load canonical pose
+            canonical_pose_path = f"smpl_data/neutral_canonical.npy"
+            if os.path.exists(canonical_pose_path):
+                self.canonical_pose = np.load(canonical_pose_path)
+
+    def get_image(self, i):
+        return blosc.unpack_array(self.imgs[i])
+
+    def preprocess_img(self, img):
+        img = img.astype("float32")  # 128 x 128
+        return img
