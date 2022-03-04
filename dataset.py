@@ -838,6 +838,7 @@ class HumanPoseDataset(THUmanPoseDataset):
             "bone_length": bone_length.astype("float32"),  # num_bone x 1
             "pose_to_world": joint_mat_world.astype("float32"),  # num_joint x 4 x 4
             "intrinsics": intrinsics.astype("float32"),  # (3, 3)
+            "pose_2d": joint_pos_image[0].transpose()[:, :2]  # (num_bone, 2)
         }
         return return_dict
 
