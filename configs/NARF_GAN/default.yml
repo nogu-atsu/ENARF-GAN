@@ -115,6 +115,7 @@ consistency_regularization_coef: 0.0
 nerf_only: False
 num_iter: 1000000
 generate_background: False
+n_accum_step: 1
 
 # snapshots
 resume: # path to snapshot
