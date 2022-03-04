@@ -13,7 +13,7 @@ from preprocess import IMG_SIZE, DATA_ROOT, read_pose_and_crop
 
 def read_frame(video_path):
     depth = scipy.io.loadmat(video_path[:-4] + "_depth.mat", squeeze_me=True)
-    depth = depth["depth_1"] > 0  # (240, 320)
+    depth = depth["depth_1"]  # (240, 320)
     disparity = 1 / depth
     disparity[disparity < 0.1] = 0
     return disparity
@@ -23,6 +23,8 @@ def preprocess(path):
     disparity = read_frame(path)
 
     x1, x2, y1, y2, A_new, resized_K = read_pose_and_crop(path)
+    if x1 is None:
+        return (None,) * 3
     cropped_disparity = disparity[y1:y2, x1:x2]
     resized_disparity = cv2.resize(cropped_disparity, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_NEAREST)
 

@@ -20,6 +20,7 @@ SMPL_MODEL = {"male": SMPL(model_path="../../smpl_data", gender="male"),
               "female": SMPL(model_path="../../smpl_data", gender="female")}
 DATA_ROOT = "/data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/"
 
+
 def read_frame(video_path, return_mask=False):
     cap = cv2.VideoCapture(video_path)
     ret, frame = cap.read()
@@ -60,7 +61,7 @@ def read_pose_and_crop(path):
     A_new = np.matmul(trans, A)
 
     if annot["joints3D"].ndim != 3:
-        return None, None, None
+        return (None,) * 6
     # shift
     joints3D = annot["joints3D"][:, :, 0]
     camLoc = annot["camLoc"]
@@ -98,6 +99,8 @@ def read_pose_and_crop(path):
 def preprocess(path):
     frame, mask = read_frame(path, SEGMENTATION)
     x1, x2, y1, y2, A_new, resized_K = read_pose_and_crop(path)
+    if x1 is None:
+        return None, None, None
     cropped_frame = frame[y1:y2, x1:x2]
     resized_frame = cv2.resize(cropped_frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
 
