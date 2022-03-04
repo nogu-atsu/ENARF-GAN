@@ -1,22 +1,20 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/GAN/20220219_wild_const_trimask_pretrained_dev_reg
+out: THUman/GAN/20220224_aist_triplane
 
 dataset:
-  name: human_tight
-  bs: 10  # batchsize
+  name: human_v2
+  bs: 12  # batchsize
   image_size: 128
   train:
-    data_root: /data/unagi0/noguchi/dataset/COCO/crop128  # <- need change
-    pose_prior_root: /data/unagi0/noguchi/dataset/mosh/CMU
+    data_root: /data/unagi0/noguchi/dataset/aist++/cache128_aligned_crop_fl1500/all_all  # <- need change
 
 generator_params:
   z_dim: 256
-  background_ratio: 0.3
+  background_ratio: 0.7
   use_triplane: True
   crop_background: True
-  pretrained_background: True
   nerf_params:
     hidden_size: 256  # hidden size of NeRF
     Nc: 48  # number of points for coarse sampling
@@ -25,11 +23,6 @@ generator_params:
     # concat model
     origin_location: center  # origin of local coordinate, root or center
     coordinate_scale: 3
-    # tri-plane model
-    multiply_density_with_triplane_wieght: False
-    clamp_mask: False
-    constant_trimask: True
-    constant_trimask_lr_mul: 1  # learning rate scale of tri-plane mask
 
 discriminator_params:
   minibatch_std: False
@@ -45,7 +38,7 @@ loss:
   ignore_boundary: False
   suppress_small: False
   r1_loss_coef: 10
-  mask_derivative_reg_coef: 1
+  tri_plane_reg_coef: 0.001
 
 consistency_regularization: False
 replace: True
@@ -58,4 +51,4 @@ nerf_only: True
 num_iter: 800000
 
 # snapshots
-resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220218_wild_const_trimask_pretrained/snapshot_latest.pth
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220107_aist_aligned_l2_stylenerf_renderer_cropbg_center_mip/snapshot_latest.pth

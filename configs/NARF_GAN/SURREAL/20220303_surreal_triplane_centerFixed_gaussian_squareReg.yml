@@ -1,35 +1,28 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/GAN/20220219_wild_const_trimask_pretrained_dev_reg
+out: THUman/GAN/20220303_surreal_triplane_centerFixed_gaussian_squareReg
 
 dataset:
-  name: human_tight
-  bs: 10  # batchsize
+  name: human_v2
+  bs: 12  # batchsize
   image_size: 128
   train:
-    data_root: /data/unagi0/noguchi/dataset/COCO/crop128  # <- need change
-    pose_prior_root: /data/unagi0/noguchi/dataset/mosh/CMU
-
+    data_root: /data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/NARF_GAN_cache  # <- need change
+    pose_prior_root: /data/unagi0/noguchi/dataset/mosh/neutrMosh/NARF_GAN_gaussian_cache
 generator_params:
   z_dim: 256
-  background_ratio: 0.3
+  background_ratio: 0.5
   use_triplane: True
   crop_background: True
-  pretrained_background: True
   nerf_params:
     hidden_size: 256  # hidden size of NeRF
     Nc: 48  # number of points for coarse sampling
     Nf: 64  # number of points for fine sampling
     density_activation: MyReLU
     # concat model
-    origin_location: center  # origin of local coordinate, root or center
+    origin_location: center_fixed  # origin of local coordinate, root or center
     coordinate_scale: 3
-    # tri-plane model
-    multiply_density_with_triplane_wieght: False
-    clamp_mask: False
-    constant_trimask: True
-    constant_trimask_lr_mul: 1  # learning rate scale of tri-plane mask
 
 discriminator_params:
   minibatch_std: False
@@ -45,7 +38,8 @@ loss:
   ignore_boundary: False
   suppress_small: False
   r1_loss_coef: 10
-  mask_derivative_reg_coef: 1
+  tri_plane_reg_coef: 0.001
+  tri_plane_square_reg_coef: 1
 
 consistency_regularization: False
 replace: True
@@ -58,4 +52,4 @@ nerf_only: True
 num_iter: 800000
 
 # snapshots
-resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220218_wild_const_trimask_pretrained/snapshot_latest.pth
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220228_surreal_triplane_centerFixed_gaussian/snapshot_latest.pth

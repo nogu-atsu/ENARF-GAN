@@ -1,0 +1,54 @@
+# NARF + Neural Rendering + GAN
+# paths
+out_root: /data/unagi0/noguchi/D1/NARF_GAN
+out: THUman/SSO/20220226_zju313_enarf_wo_selector_centerFixed
+
+dataset:
+  name: human_v2
+  bs: 16  # batchsize
+  image_size: 512
+  train:
+    data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_313/train_cache_1176  # <- need change
+    n_frames: 1176
+  val:
+    train:
+      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_313/train_cache_1176  # <- need change
+      n_frames: 1176
+    novel_view:
+      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_313/test_novel_view_cache_1176  # <- need change
+      n_frames: 1176
+    novel_pose:
+      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_313/test_novel_pose_cache_294  # <- need change
+      n_frames: 294
+
+
+
+generator_params:
+  use_triplane: True
+  nerf_params:
+    hidden_size: 256  # hidden size of NeRF
+    Nc: 48  # number of points for coarse sampling
+    Nf: 64  # number of points for fine sampling
+    density_activation: MyReLU
+    # concat model
+    origin_location: center_fixed  # origin of local coordinate, root or center
+    coordinate_scale: 3
+    constant_triplane: True
+    no_selector: True
+
+loss:
+  color_coef: 1
+  mask_coef: 1
+  nerf_loss_type: mae
+
+# hyper parameters
+num_iter: 100000
+lr: 0.001
+scheduler_gamma: 0.99995
+val_interval: 500 # validation interval
+print_interval: 10
+tensorboard_interval: 100
+save_interval: 500
+
+# snapshots
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220130_zju_triplane/snapshot_latest.pth
