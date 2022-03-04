@@ -4,7 +4,6 @@ import os
 import sys
 import warnings
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from mmpose.apis import (inference_top_down_pose_model, init_pose_model,
@@ -23,7 +22,9 @@ except (ImportError, ModuleNotFoundError):
 sys.path.append(".")
 from NARF.utils import yaml_config
 from dataset import THUmanPoseDataset, HumanPoseDataset
-from models.net import NeRFNRGenerator
+from models.net import NeRFNRGenerator, TriNeRFGenerator
+
+warnings.filterwarnings('ignore')
 
 
 class DetectPose:
@@ -114,7 +115,9 @@ class GenIterator:
         minibatch = self.data.__next__()  # randomly sample latent
 
         batchsize = len(minibatch["pose_to_camera"])
-        z = torch.cuda.FloatTensor(batchsize, self.gen.config.z_dim * 4).normal_()
+
+        z_dim = self.gen.config.z_dim * 3 if is_VAE else self.gen.config.z_dim * 4
+        z = torch.cuda.FloatTensor(batchsize, z_dim).normal_()
 
         pose_to_camera = minibatch["pose_to_camera"].cuda(non_blocking=True)
         bone_length = minibatch["bone_length"].cuda(non_blocking=True)
@@ -161,7 +164,7 @@ def calc_error(gt_pose, pred_pose, size, kpts_thres=0.3):
                 kpts[invalid] = 1e10  # mask keypoints not detected
                 pred_selected = kpts[mpii_idx]
                 error = (np.linalg.norm(gt_selected - pred_selected, axis=1) /
-                         np.linalg.norm(gt_selected[lhip] - gt_selected[rsho]))
+                         np.linalg.norm(gt[head] - gt[neck]))
                 errors.append(error)
             error = np.array(errors).min(axis=0)  # (n_kpts, )
         else:
@@ -173,19 +176,16 @@ def calc_error(gt_pose, pred_pose, size, kpts_thres=0.3):
 
 
 def pck(joint_error):
-    joint_error_sorted = np.sort(joint_error, axis=0)
-    for i in range(joint_error_sorted.shape[1]):
-        plt.plot(joint_error_sorted[:, i], np.linspace(0, 1, num=joint_error.shape[0], endpoint=False), label=name[i])
-    plt.legend()
+    # import pdb
+    # pdb.set_trace()
+    pckh = np.mean(joint_error < 0.5, axis=0)
 
-    plt.xlim(0, 0.2)
     out_dir = config.out_root
     out_name = config.out
-    path = f"{out_dir}/result/{out_name}/pck_graph.png"
-    plt.savefig(path)
 
-    path = f"{out_dir}/result/{out_name}/joint_error.npy"
-    np.save(path, np.array(joint_error))
+    path = f"{out_dir}/result/{out_name}/pckh.npy"
+    np.save(path, pckh)
+    print(path, pckh)
 
 
 def main(config, batch_size=4, num_sample=10_000):
@@ -213,9 +213,18 @@ def main(config, batch_size=4, num_sample=10_000):
     loader_pose = DataLoader(pose_dataset, batch_size=batch_size, num_workers=2, shuffle=True,
                              drop_last=True)
 
-    gen = NeRFNRGenerator(config.generator_params, pose_dataset.size,
-                          num_bone=pose_dataset.num_bone,
-                          num_bone_param=pose_dataset.num_bone_param).to("cuda").eval()
+    gen_config = config.generator_params
+
+    if gen_config.use_triplane:
+        gen = TriNeRFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+                               num_bone_param=pose_dataset.num_bone_param,
+                               parent_id=pose_dataset.parents,
+                               black_background=is_VAE)
+        gen.register_canonical_pose(pose_dataset.canonical_pose)
+        gen.to("cuda")
+    else:
+        gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+                              num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents).to("cuda")
     out_dir = config.out_root
     out_name = config.out
     iteration = args.iteration if args.iteration > 0 else "latest"
@@ -247,10 +256,11 @@ if __name__ == "__main__":
 
     smpl_idx = [8, 5, 2, 1, 4, 7, 12, 21, 19, 17, 16, 18, 20]
     mpii_idx = [0, 1, 2, 3, 4, 5, 8, 10, 11, 12, 13, 14, 15]
-    lhip = 3
-    rsho = 9
+    neck = 8
+    head = 9
     name = ["rank", "rkne", "rhip", "lhip", "lkne", "lank", "neck", "rwri", "relb", "rsho", "lsho", "lelb", "lwri"]
 
     config = yaml_config(args.config, args.default_config, num_workers=args.num_workers)
+    is_VAE = "VAE" in args.config
 
     main(config, num_sample=10000)
