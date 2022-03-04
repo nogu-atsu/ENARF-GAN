@@ -435,7 +435,7 @@ class NeRFBase(nn.Module):
     def forward(self, batchsize, sampled_img_coord, pose_to_camera, inv_intrinsics, z, z_rend,
                 bone_length, render_scale=1, Nc=64, Nf=128,
                 return_intermediate=False, camera_pose: Optional[torch.Tensor] = None,
-                truncation_psi=1):
+                truncation_psi=1, return_disparity=False):
         """
         rendering function for sampled rays
         :param batchsize:
@@ -469,7 +469,9 @@ class NeRFBase(nn.Module):
             merged_color, merged_mask, _, intermediate_output = nerf_output
             return merged_color, merged_mask, intermediate_output
 
-        merged_color, merged_mask, _ = nerf_output
+        merged_color, merged_mask, merged_disparity = nerf_output
+        if return_disparity:
+            return merged_color, merged_mask, merged_disparity
         return merged_color, merged_mask
 
     def render_entire_img(self, pose_to_camera, inv_intrinsics, z, z_rend, bone_length, camera_pose=None,
@@ -512,8 +514,8 @@ class NeRFBase(nn.Module):
             if self.tri_plane_based:
                 if self.origin_location == "center+head":
                     _bone_length = torch.cat([bone_length,
-                                             torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
-                                            dim=1)  # (B, 24)
+                                              torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
+                                             dim=1)  # (B, 24)
                 else:
                     _bone_length = bone_length
                 tri_plane_feature = self.compute_tri_plane_feature(z, _bone_length)
