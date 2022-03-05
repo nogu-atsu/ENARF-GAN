@@ -698,8 +698,9 @@ class SSONARFGenerator(nn.Module):
 
         if config.nerf_params.origin_location == "center+head":
             num_bone_param = num_bone
+        view_dependent = not config.nerf_params.no_ray_direction
         self.nerf = nerf(config.nerf_params, z_dim=z_dim, num_bone=num_bone, bone_length=True,
-                         parent=parent_id, num_bone_param=num_bone_param, view_dependent=True)
+                         parent=parent_id, num_bone_param=num_bone_param, view_dependent=view_dependent)
 
     def register_canonical_pose(self, pose: np.ndarray):
         if hasattr(self.nerf, "register_canonical_pose"):
