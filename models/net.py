@@ -191,7 +191,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         """
         assert self.num_bone == 1 or (bone_length is not None and pose_to_camera is not None)
         batchsize = pose_to_camera.shape[0]
-        patch_size = self.config.patch_size
+        patch_size = self.config.patch_size * 4 if return_disparity else self.config.patch_size
 
         grid, homo_img = self.ray_sampler(self.size, patch_size, batchsize)
 
@@ -208,6 +208,10 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
                                 return_intermediate=return_intermediate,
                                 render_scale=nerf_scale,
                                 return_disparity=return_disparity)
+        if return_disparity:
+            disparity = nerf_output[2]
+            disparity = disparity * self.config.nerf_params.coordinate_scale
+            return None, None, disparity
 
         low_res_feature, low_res_mask = nerf_output[:2]
         fine_weights = self.nerf.buffers_tensors["fine_weights"]
@@ -224,9 +228,6 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         if return_intermediate:
             fine_points, fine_density = nerf_output[-1]
             return rendered_color, low_res_mask, fine_points, fine_density
-        if return_disparity:
-            disparity = nerf_output[2]
-            return rendered_color, low_res_mask, disparity
         return rendered_color, low_res_mask, fine_weights, fine_depth
 
 
@@ -614,7 +615,8 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         return self.nerf.flops
 
     def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
-                return_intermediate=False, truncation_psi=1, black_bg_if_possible=False, return_disparity=False):
+                return_intermediate=False, truncation_psi=1, black_bg_if_possible=False, return_disparity=False,
+                return_bg = False):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -668,8 +670,10 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
             return rendered_color, fg_mask, fine_points, fine_density
         if return_disparity:
             disparity = nerf_output[2]
+            disparity = disparity * self.config.nerf_params.coordinate_scale
             return rendered_color, fg_mask, disparity
-
+        if return_bg:
+            return fg_color, fg_mask, bg_color
         return rendered_color, fg_mask, fine_weights, fine_depth
 
 
