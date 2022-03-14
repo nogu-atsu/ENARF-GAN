@@ -177,7 +177,7 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         return self.nerf.flops
 
     def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
-                return_intermediate=False, nerf_scale=1, return_disparity=False, *args, **kwargs):
+                return_intermediate=False, nerf_scale=1, return_disparity=False, return_bg=False, *args, **kwargs):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -228,6 +228,8 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
         if return_intermediate:
             fine_points, fine_density = nerf_output[-1]
             return rendered_color, low_res_mask, fine_points, fine_density
+        if return_bg:
+            return rendered_color, low_res_mask, -1
         return rendered_color, low_res_mask, fine_weights, fine_depth
 
     def render_mesh(self, pose_to_camera, intrinsics, z, bone_length, voxel_size=0.003,
@@ -623,7 +625,7 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
 
     def forward(self, pose_to_camera, pose_to_world, bone_length, z=None, inv_intrinsics=None,
                 return_intermediate=False, truncation_psi=1, black_bg_if_possible=False, return_disparity=False,
-                return_bg = False):
+                return_bg=False):
         """
         generate image from 3d bone mask
         :param pose_to_camera: camera coordinate of joint
@@ -841,3 +843,25 @@ class SSONARFGenerator(nn.Module):
                                            camera_pose, render_size, self.config.nerf_params.Nc,
                                            self.config.nerf_params.Nf, semantic_map,
                                            use_normalized_intrinsics, no_grad=no_grad)
+
+    def profile_memory_stats(self, pose_to_camera, inv_intrinsics, frame_time, bone_length,
+                             camera_pose=None, render_size=128,
+                             semantic_map=False, use_normalized_intrinsics=False):
+        """
+
+        :param pose_to_camera:
+        :param inv_intrinsics:
+        :param frame_time:
+        :param bone_length:
+        :param camera_pose:
+        :param render_size:
+        :param semantic_map:
+        :param use_normalized_intrinsics:
+        :return:
+        """
+        # sparse rendering
+        z1, z2 = self.get_latents(frame_time, pose_to_camera)
+        return self.nerf.profile_memory_stats(pose_to_camera, inv_intrinsics, z1, z2, bone_length,
+                                              camera_pose, render_size, self.config.nerf_params.Nc,
+                                              self.config.nerf_params.Nf, semantic_map,
+                                              use_normalized_intrinsics)

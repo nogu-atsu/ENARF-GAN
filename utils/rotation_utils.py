@@ -1,8 +1,11 @@
+from typing import Tuple
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
+from copy import deepcopy
 
 
 def rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
@@ -132,3 +135,14 @@ def interpolate_pose(pose_3d: np.ndarray, parents: np.ndarray, num: int = 100, l
 
         interpolated_poses.append(np.stack(interp_pose))
     return np.stack(interpolated_poses)
+
+
+def rotate_mesh_by_angle(pose_3d: torch.Tensor, meshes: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], angle):
+    meshes = deepcopy(meshes)
+    vertices = meshes[0]  # (V, 3)
+    center = pose_3d[0, :, :3, 3:].mean(dim=0)  # (3, 1)
+    R = rotation_matrix(angle)
+    rotated_vertices = torch.matmul(R[0, :3, :3], (vertices.permute(1, 0) - center)) + R[0, :3, 3:] + center
+    rotated_vertices = rotated_vertices.permute(1, 0)
+    meshes = (rotated_vertices,) + meshes[1:]
+    return meshes

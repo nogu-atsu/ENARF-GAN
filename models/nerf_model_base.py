@@ -653,3 +653,85 @@ class NeRFBase(nn.Module):
         images = (images.cpu().numpy()[::-1, ::-1] * 255).astype("uint8")
 
         return images
+
+    def profile_memory_stats(self, pose_to_camera, inv_intrinsics, z, z_rend, bone_length, camera_pose=None,
+                             render_size=128, Nc=64, Nf=128,
+                             semantic_map=False, use_normalized_intrinsics=False):
+        """
+
+        :param pose_to_camera:
+        :param inv_intrinsics:
+        :param z:
+        :param z_rend:
+        :param bone_length:
+        :param camera_pose:
+        :param render_size:
+        :param Nc:
+        :param Nf:
+        :param semantic_map:
+        :param use_normalized_intrinsics:
+        :return:
+        """
+        assert z is None or z.shape[0] == 1
+        assert bone_length is None or bone_length.shape[0] == 1
+        ray_batchsize = self.config.render_bs
+
+        from utils.memory_reporter import get_gpu_properties
+
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        properties = get_gpu_properties()
+        print("model", list(properties)[5]['memory.used'])
+        initial_memory = int(list(properties)[5]['memory.used'])
+        if use_normalized_intrinsics:
+            img_coord = torch.stack([(torch.arange(render_size * render_size) % render_size + 0.5) / render_size,
+                                     (torch.arange(render_size * render_size) // render_size + 0.5) / render_size,
+                                     torch.ones(render_size * render_size).long()], dim=0).float()
+        else:
+            img_coord = torch.stack([torch.arange(render_size * render_size) % render_size + 0.5,
+                                     torch.arange(render_size * render_size) // render_size + 0.5,
+                                     torch.ones(render_size * render_size).long()], dim=0).float()
+
+        img_coord = img_coord[None, None].cuda()
+
+        # # count rays
+        # self.valid_rays = 0
+        # self.valid_canonical_pos = 0
+
+        if self.tri_plane_based:
+            if self.origin_location == "center+head":
+                _bone_length = torch.cat([bone_length,
+                                          torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
+                                         dim=1)  # (B, 24)
+            else:
+                _bone_length = bone_length
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            properties = get_gpu_properties()
+            tri_plane_feature = self.compute_tri_plane_feature(z, _bone_length)
+            initial_memory = int(list(properties)[5]['memory.used'])
+        else:
+            tri_plane_feature = None
+
+        all_required_memory = initial_memory
+        print("tri-plane", list(properties)[5]['memory.used'])
+        for i in range(0, render_size ** 2, ray_batchsize):
+            (rendered_color_i, rendered_mask_i,
+             rendered_disparity_i) = self.render(img_coord[:, :, :, i:i + ray_batchsize],
+                                                 pose_to_camera[:1],
+                                                 inv_intrinsics,
+                                                 z=z,
+                                                 z_rend=z_rend,
+                                                 bone_length=bone_length,
+                                                 Nc=Nc,
+                                                 Nf=Nf,
+                                                 camera_pose=camera_pose,
+                                                 tri_plane_feature=tri_plane_feature)
+
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            properties = get_gpu_properties()
+            print("inference", list(properties)[5]['memory.used'])
+            all_required_memory += int(list(properties)[5]['memory.used']) - initial_memory
+
+        print("all required memory", all_required_memory, "MB")

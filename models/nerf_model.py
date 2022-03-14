@@ -578,9 +578,9 @@ class TriPlaneNeRF(NeRFBase):
         self.w_dim = 512
         self.feat_dim = 32
 
-        self.fc_bone_length = torch.jit.script(
-            StyledConv1d(self.num_frequency_for_other * 2 * self.num_bone_param,
-                         self.z_dim, self.z_dim))
+        # self.fc_bone_length = torch.jit.script(
+        #     StyledConv1d(self.num_frequency_for_other * 2 * self.num_bone_param,
+        #                  self.z_dim, self.z_dim))
 
         self.no_selector = self.config.no_selector
         if self.config.constant_triplane:
@@ -681,7 +681,7 @@ class TriPlaneNeRF(NeRFBase):
                                    (pose[1:, :, 3:] +
                                     pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
         elif self.origin_location == "center+head":
-            length = np.concatenate([length, np.ones(1,)])  # (24,)
+            length = np.concatenate([length, np.ones(1, )])  # (24,)
             head_id = 15
             _pose = np.concatenate([pose[self.parent_id[1:], :, :3],
                                     (pose[1:, :, 3:] +
@@ -744,7 +744,8 @@ class TriPlaneNeRF(NeRFBase):
         position_validity = position_validity.reshape(-1)
         assert position_validity.dtype == torch.bool
         valid_args = torch.where(position_validity)[0]  # (num_valid, )
-        if valid_args.shape[0] > 0:
+        num_valid = valid_args.shape[0]
+        if num_valid > 0:
             # print(len(valid_args) / batchsize / n)
             position_perm = position.permute(2, 0, 1, 3).reshape(3, batchsize * n_bone * n)  # (3, B * n_bone * n)
             valid_positions = torch.gather(position_perm, dim=1,
