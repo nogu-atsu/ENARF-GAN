@@ -476,7 +476,7 @@ class NeRFBase(nn.Module):
 
     def render_entire_img(self, pose_to_camera, inv_intrinsics, z, z_rend, bone_length, camera_pose=None,
                           render_size=128, Nc=64, Nf=128,
-                          semantic_map=False, use_normalized_intrinsics=False):
+                          semantic_map=False, use_normalized_intrinsics=False, no_grad=True):
         """
 
         :param pose_to_camera:
@@ -510,7 +510,7 @@ class NeRFBase(nn.Module):
         rendered_mask = []
         rendered_disparity = []
 
-        with torch.no_grad():
+        with torch.set_grad_enabled(not no_grad):
             if self.tri_plane_based:
                 if self.origin_location == "center+head":
                     _bone_length = torch.cat([bone_length,

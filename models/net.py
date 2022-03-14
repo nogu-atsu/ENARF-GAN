@@ -793,7 +793,7 @@ class SSONARFGenerator(nn.Module):
 
     def render_entire_img(self, pose_to_camera, inv_intrinsics, frame_time, bone_length,
                           camera_pose=None, render_size=128,
-                          semantic_map=False, use_normalized_intrinsics=False):
+                          semantic_map=False, use_normalized_intrinsics=False, no_grad=True):
         """
 
         :param pose_to_camera:
@@ -811,4 +811,4 @@ class SSONARFGenerator(nn.Module):
         return self.nerf.render_entire_img(pose_to_camera, inv_intrinsics, z1, z2, bone_length,
                                            camera_pose, render_size, self.config.nerf_params.Nc,
                                            self.config.nerf_params.Nf, semantic_map,
-                                           use_normalized_intrinsics)
+                                           use_normalized_intrinsics, no_grad=no_grad)
