@@ -55,7 +55,8 @@ class GenIterator:
         inv_intrinsic = torch.inverse(intrinsic)
         with torch.no_grad():
             fake_img, _, _, _ = self.gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic,
-                                         black_bg_if_possible=self.black_bg_if_possible)
+                                         black_bg_if_possible=self.black_bg_if_possible,
+                                         truncation_psi=args.truncation)
         self.i += 1
         return torch.clamp(fake_img, -1, 1)
 
@@ -208,7 +209,7 @@ def my_fid_func(config, mode="legacy_pytorch", batch_size=4, num_sample=10_000,
             if "activate.bias" in k:
                 snapshot["gen"][k[:-13] + "bias"] = snapshot["gen"][k].reshape(1, -1, 1, 1)
                 del snapshot["gen"][k]
-        gen.load_state_dict(snapshot["gen"], strict=True)
+        gen.load_state_dict(snapshot["gen"], strict=False)
     else:
         assert False, "pretrained model is not loading"
 
@@ -221,13 +222,17 @@ def my_fid_func(config, mode="legacy_pytorch", batch_size=4, num_sample=10_000,
     mu, sigma = calc_statistics(gen, feat_model, mode, batch_size, device, desc)
     fid = frechet_distance(mu, sigma, ref_mu, ref_sigma)
 
+    if args.truncation != 1:
+        suffix = f"_trunc{args.truncation}"
+    else:
+        suffix = ""
     if args.black_bg:
         print(args.config, "black fid:", fid)
-        with open(f"{out_dir}/result/{out_name}/black_fid.txt", "w") as f:
+        with open(f"{out_dir}/result/{out_name}/black_fid{suffix}.txt", "w") as f:
             f.write(f"{fid}")
     else:
         print(args.config, "fid:", fid)
-        with open(f"{out_dir}/result/{out_name}/fid.txt", "w") as f:
+        with open(f"{out_dir}/result/{out_name}/fid{suffix}.txt", "w") as f:
             f.write(f"{fid}")
 
     return fid
@@ -240,6 +245,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--iteration', type=int, default=-1)
     parser.add_argument('--black_bg', action="store_true")
+    parser.add_argument('--truncation', type=float, default=1)
 
     args = parser.parse_args()
 

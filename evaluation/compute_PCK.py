@@ -126,7 +126,8 @@ class GenIterator:
         pose_2d = minibatch["pose_2d"]
         inv_intrinsic = torch.inverse(intrinsic)
         with torch.no_grad():
-            fake_img, _, _, _ = self.gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic)
+            fake_img, _, _, _ = self.gen(pose_to_camera, pose_to_world, bone_length, z, inv_intrinsic,
+                                         truncation_psi=args.truncation)
         self.i += 1
         return torch.clamp(fake_img, -1, 1).cpu().numpy(), pose_2d.numpy()
 
@@ -183,7 +184,12 @@ def pck(joint_error):
     out_dir = config.out_root
     out_name = config.out
 
-    path = f"{out_dir}/result/{out_name}/pckh.npy"
+    if args.truncation != 1:
+        suffix = f"trunc{args.truncation}"
+    else:
+        suffix = ""
+
+    path = f"{out_dir}/result/{out_name}/pckh_{suffix}.npy"
     np.save(path, pckh)
     print(path, pckh)
 
@@ -235,7 +241,7 @@ def main(config, batch_size=4, num_sample=10_000):
             if "activate.bias" in k:
                 snapshot["gen"][k[:-13] + "bias"] = snapshot["gen"][k].reshape(1, -1, 1, 1)
                 del snapshot["gen"][k]
-        gen.load_state_dict(snapshot["gen"], strict=True)
+        gen.load_state_dict(snapshot["gen"], strict=False)
     else:
         assert False, "pretrained model is not loading"
 
@@ -251,6 +257,7 @@ if __name__ == "__main__":
     parser.add_argument('--default_config', type=str, default="configs/NARF_GAN/default.yml")
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--iteration', type=int, default=-1)
+    parser.add_argument('--truncation', type=float, default=1)
 
     args = parser.parse_args()
 
