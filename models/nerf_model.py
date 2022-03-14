@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from tqdm import tqdm
 
 from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
@@ -419,6 +420,107 @@ class StyleNeRF(NeRF):
 
     def nerf_path(self, ):
         raise NotImplementedError()
+
+    def transform_pose(self, pose_to_camera, bone_length):
+        if self.origin_location == "center":
+            pose_to_camera = torch.cat([pose_to_camera[:, 1:, :, :3],
+                                        (pose_to_camera[:, 1:, :, 3:] +
+                                         pose_to_camera[:, self.parent_id[1:], :, 3:]) / 2], dim=-1)
+        elif self.origin_location == "center_fixed":
+            pose_to_camera = torch.cat([pose_to_camera[:, self.parent_id[1:], :, :3],
+                                        (pose_to_camera[:, 1:, :, 3:] +
+                                         pose_to_camera[:, self.parent_id[1:], :, 3:]) / 2], dim=-1)
+
+        elif self.origin_location == "center+head":
+            bone_length = torch.cat([bone_length, torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
+                                    dim=1)  # (B, 24)
+            head_id = 15
+            _pose_to_camera = torch.cat([pose_to_camera[:, self.parent_id[1:], :, :3],
+                                         (pose_to_camera[:, 1:, :, 3:] +
+                                          pose_to_camera[:, self.parent_id[1:], :, 3:]) / 2],
+                                        dim=-1)  # (B, 23, 4, 4)
+            pose_to_camera = torch.cat([_pose_to_camera, pose_to_camera[:, head_id][:, None]], dim=1)  # (B, 24, 4, 4)
+        return pose_to_camera, bone_length
+
+    def render_mesh(self, pose_to_camera, intrinsics, z, bone_length, voxel_size=0.003,
+                    mesh_th=15):
+
+        import mcubes
+        from pytorch3d.renderer import (
+            look_at_view_transform,
+            FoVPerspectiveCameras,
+            PointLights,
+            RasterizationSettings,
+            MeshRenderer,
+            MeshRasterizer,
+            SoftPhongShader,
+            HardPhongShader,
+            Textures,
+        )
+        from pytorch3d.structures import Meshes
+
+        assert z is None or z.shape[0] == 1
+        assert bone_length is None or bone_length.shape[0] == 1
+        ray_batchsize = self.config.render_bs if hasattr(self.config, "render_bs") else 262144
+        device = pose_to_camera.device
+        cube_size = int(1 / voxel_size)
+
+        center = pose_to_camera[:, 0, :3, 3:].clone()  # (1, 3, 1)
+
+        bins = torch.arange(-cube_size, cube_size + 1) / cube_size
+        p = (torch.stack(torch.meshgrid(bins, bins, bins)).reshape(1, 3, -1) + center.cpu()) * self.coordinate_scale
+
+        pose_to_camera, bone_length = self.transform_pose(pose_to_camera, bone_length)
+
+        if self.coordinate_scale != 1:
+            pose_to_camera[:, :, :3, 3] *= self.coordinate_scale
+
+        density = []
+        for i in tqdm(range(0, p.shape[-1], ray_batchsize)):
+            rot = pose_to_camera[:, :, :3, :3].permute(0, 1, 3, 2)
+            trans = pose_to_camera[:, :, :3, 3:]
+            p_i = p[:, :, i:i + ray_batchsize].cuda()  # (1, 3, ray_bs)
+            local_p = torch.matmul(rot, (p_i[:, None] - trans))  # (1, n_bone, 3, ray_bs)
+            local_p = local_p.reshape(1, self.num_bone * 3, -1)
+            _density = self.calc_color_and_density(local_p, z, None, bone_length, None)[0]  # (1, 1, n)
+            density.append(_density)
+        density = torch.cat(density, dim=-1)
+        density = density.reshape(cube_size * 2 + 1, cube_size * 2 + 1, cube_size * 2 + 1).cpu().numpy()
+
+        vertices, triangles = mcubes.marching_cubes(density, mesh_th)
+        vertices = (vertices - cube_size) * voxel_size  # (V, 3)
+        vertices = torch.tensor(vertices, device=device).float() + center[:, :, 0]
+        triangles = torch.tensor(triangles.astype("int64")).to(device)
+
+        verts_rgb = torch.ones_like(vertices)[None]  # (1, V, 3)
+        textures = Textures(verts_rgb=verts_rgb)
+        meshes = Meshes(verts=[vertices], faces=[triangles], textures=textures)
+
+        cameras = FoVPerspectiveCameras(device=device, fov=30)  # , K=intrinsics)
+        lights = PointLights(device=device, location=[[0.0, 0.0, 0.0]])
+
+        raster_settings = RasterizationSettings(
+            image_size=512,
+            blur_radius=0.0,
+            faces_per_pixel=1,
+        )
+
+        renderer = MeshRenderer(
+            rasterizer=MeshRasterizer(
+                cameras=cameras,
+                raster_settings=raster_settings
+            ),
+            shader=HardPhongShader(
+                device=device,
+                cameras=cameras,
+                lights=lights
+            )
+        )
+        images = renderer(meshes)
+        images = images[0, :, :, :3]
+        images = (images.cpu().numpy() * 255).astype("uint8")
+
+        return images, meshes
 
 
 class TriPlaneNeRF(NeRFBase):

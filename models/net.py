@@ -230,6 +230,13 @@ class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
             return rendered_color, low_res_mask, fine_points, fine_density
         return rendered_color, low_res_mask, fine_weights, fine_depth
 
+    def render_mesh(self, pose_to_camera, intrinsics, z, bone_length, voxel_size=0.003,
+                    mesh_th=15, truncation_psi=0.4):
+        z_dim = z.shape[1] // 4
+        z_for_nerf, z_for_neural_render, z_for_background = torch.split(z, [z_dim * 2, z_dim, z_dim], dim=1)
+        return self.nerf.render_mesh(pose_to_camera, intrinsics, z_for_nerf, bone_length,
+                                     voxel_size, mesh_th)
+
 
 class Encoder(nn.Module):
     def __init__(self, config, parents: np.ndarray):
@@ -675,6 +682,28 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
         if return_bg:
             return fg_color, fg_mask, bg_color
         return rendered_color, fg_mask, fine_weights, fine_depth
+
+    def render_mesh(self, pose_to_camera, intrinsics, z, bone_length, voxel_size=0.003,
+                    mesh_th=15, truncation_psi=0.4):
+        if not self.black_background:
+            z_dim = z.shape[1] // 4
+            z_for_nerf, z_for_neural_render, z_for_background = torch.split(z, [z_dim * 2, z_dim, z_dim], dim=1)
+        else:
+            z_dim = z.shape[1] // 3
+            z_for_nerf, z_for_neural_render = torch.split(z, [z_dim * 2, z_dim], dim=1)
+        return self.nerf.render_mesh(pose_to_camera, intrinsics, z_for_nerf, z_for_neural_render, bone_length,
+                                     voxel_size, mesh_th, truncation_psi, self.size)
+
+    def create_mesh(self, pose_to_camera, z, bone_length, voxel_size=0.003,
+                    mesh_th=15, truncation_psi=0.4):
+        if not self.black_background:
+            z_dim = z.shape[1] // 4
+            z_for_nerf, z_for_neural_render, z_for_background = torch.split(z, [z_dim * 2, z_dim, z_dim], dim=1)
+        else:
+            z_dim = z.shape[1] // 3
+            z_for_nerf, z_for_neural_render = torch.split(z, [z_dim * 2, z_dim], dim=1)
+        return self.nerf.create_mesh(pose_to_camera, z_for_nerf, z_for_neural_render, bone_length,
+                                     voxel_size, mesh_th, truncation_psi)
 
 
 class SSONARFGenerator(nn.Module):
