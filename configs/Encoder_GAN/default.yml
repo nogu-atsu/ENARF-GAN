@@ -1,0 +1,58 @@
+# paths
+out_root: path_to_your_output_root  # <- need change
+out: output_directory  # <- need change
+
+dataset:
+  data_root:
+  name: hand2
+  bs: 6  # batchsize
+  image_size: 128
+  train:
+    random_background: True
+    data_root: path_to_your_dataset_root  # <- need change
+    background_path:
+    train: True
+    n_mesh: 3545
+    n_rendered_per_mesh: 10
+    n_imgs_per_mesh: 8
+  test:
+    random_background: True
+    data_root: path_to_your_dataset_root  # <- need change
+    background_path:
+    train: False
+    n_mesh: 3545
+    n_rendered_per_mesh: 10
+    n_imgs_per_mesh: 2
+
+encoder_params:
+  image_feat_dim: 512
+  image_size: 128
+  z_dim: 256
+  transformer_hidden_dim: 256
+  transformer_n_head: 4
+  num_encoder_layers: 2
+  num_decoder_layers: 2
+
+loss:
+  adv_loss_type: ce
+  bone_guided_coef: 10
+  nerf_coef: 1
+  color_coef: 1
+  mask_coef: 1
+  push_to_background_coef: 5
+  nerf_loss_type: mse
+  ignore_boundary: False
+  suppress_small: False
+  r1_loss_coef: 0.01
+
+consistency_regularization: False
+consistency_regularization_coef: 0.0
+num_iter: 1000000
+
+# snapshots
+resume: # path to snapshot
+
+# For DDP
+master_addr: 'localhost'
+master_port: '12357'
+backend: 'nccl'

@@ -1,7 +1,7 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/20211003_enc
+out: THUman/20211007_enc
 
 dataset:
   name: human
@@ -43,4 +43,4 @@ consistency_regularization_coef: 0.0
 num_iter: 100000
 
 # snapshots
-#resume: /data/unagi0/noguchi/D1/unsupervised_pose_disentanglement/NARF_GAN/result/THUman/20210910/snapshot_latest.pth
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/20211007_enc/snapshot_35000.pth

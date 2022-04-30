@@ -203,7 +203,7 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
 
             gen_module.load_state_dict(snapshot["gen"], strict=True)
             # gen_optimizer.load_state_dict(snapshot["gen_opt"])
-            # iter = snapshot["iteration"]
+            iter = snapshot["iteration"]
             start_time = snapshot["start_time"]
             del snapshot
 

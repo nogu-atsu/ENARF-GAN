@@ -1,7 +1,7 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/SSO/20220215_zju315_deform_triplane
+out: THUman/SSO/20220221_zju315_deform_triplane
 
 dataset:
   name: human_v2
@@ -50,4 +50,4 @@ tensorboard_interval: 100
 save_interval: 500
 
 # snapshots
-resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/SSO/20220215_zju315_const_triplane/snapshot_latest.pth
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/SSO/20220215_zju315_const_triplane/snapshot_latest.pth

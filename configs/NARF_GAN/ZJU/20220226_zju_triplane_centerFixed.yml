@@ -1,46 +1,28 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/GAN/20220226_surreal_stylenerf_centerFixed
+out: THUman/GAN/20220226_zju_triplane_centerFixed
 
 dataset:
   name: human_v2
-  bs: 12  # batchsize
+  bs: 8  # batchsize
   image_size: 128
   train:
-    data_root: /data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/NARF_GAN_cache  # <- need change
+    data_root: /data/unagi0/noguchi/dataset/zju_mocap_v2/cache128_aligned_crop_fl1200_correct_20%/all_train  # <- need change
 
 generator_params:
-  no_nerf_bn: True
   z_dim: 256
-  patch_size: 32
-  use_nerf: Ture
-  z_bg_dim: 0
   background_ratio: 0.7
-  bg_activation: l2 # tanh or None
-  use_style_nerf: True
-  use_style_nerf_renderer: True
+  use_triplane: True
   crop_background: True
   nerf_params:
-    final_activation: l2
     hidden_size: 256  # hidden size of NeRF
-    out_dim: 256  # output channel of NeRF
     Nc: 48  # number of points for coarse sampling
-    Nf: 48  # number of points for fine sampling
-    no_world_pose: True
-    no_ray_direction: True
-    concat: True
+    Nf: 64  # number of points for fine sampling
     density_activation: MyReLU
-    density_scale: 1
     # concat model
-    mask_input: True
-    hard_mask: False
-    use_scale_factor: True
-    group_conv_first: False
     origin_location: center_fixed  # origin of local coordinate, root or center
     coordinate_scale: 3
-    # render disparity at full resolution
-    max_chunk_size: 4096
 
 discriminator_params:
   minibatch_std: False
@@ -56,6 +38,7 @@ loss:
   ignore_boundary: False
   suppress_small: False
   r1_loss_coef: 10
+  tri_plane_reg_coef: 0.001
 
 consistency_regularization: False
 replace: True
@@ -68,4 +51,4 @@ nerf_only: True
 num_iter: 800000
 
 # snapshots
-#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20211212_NoPoseAndRayDirection/snapshot_latest.pth
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/GAN/20220204_zju_triplane/snapshot_latest.pth

@@ -349,6 +349,8 @@ class NeRFBase(nn.Module):
                                                     Nf=Nf,
                                                     render_scale=render_scale,
                                                     camera_pose=camera_pose)
+
+        # self.valid_rays += 0 if ray_validity is None else ray_validity[0, 0, 0].sum()
         if fine_depth is not None:
             # fine density & color # B x groups x 1 x n*(Nc+Nf), B x groups x 3 x n*(Nc+Nf)
             if semantic_map and self.config.mask_input:
@@ -410,6 +412,7 @@ class NeRFBase(nn.Module):
             rendered_disparity = torch.sum(weights * 1 / fine_depth, dim=3).reshape(batchsize, -1)  # B x n
 
             if batchsize == 1:  # revert invalid rays
+
                 def revert_invalid_rays(color, mask, disparity):
                     _color = torch.zeros(batchsize, 3, n, device=device)
                     _color[:, :, ray_validity[0, 0, 0]] = color
@@ -510,6 +513,10 @@ class NeRFBase(nn.Module):
         rendered_mask = []
         rendered_disparity = []
 
+        # # count rays
+        # self.valid_rays = 0
+        # self.valid_canonical_pos = 0
+
         with torch.set_grad_enabled(not no_grad):
             if self.tri_plane_based:
                 if self.origin_location == "center+head":
@@ -541,6 +548,9 @@ class NeRFBase(nn.Module):
             rendered_color = torch.cat(rendered_color, dim=2)
             rendered_mask = torch.cat(rendered_mask, dim=1)
             rendered_disparity = torch.cat(rendered_disparity, dim=1)
+        # print("n_valid_rays", self.valid_rays)
+        # print("n_valid_canonical_position", self.valid_canonical_pos)
+
         return (rendered_color.reshape(3, render_size, render_size),  # 3 x size x size
                 rendered_mask.reshape(render_size, render_size),  # size x size
                 rendered_disparity.reshape(render_size, render_size))  # size x size

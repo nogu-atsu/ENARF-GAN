@@ -1,0 +1,64 @@
+# NARF + Neural Rendering + GAN
+# paths
+out_root: /data/unagi0/noguchi/D1/NARF_GAN
+out: THUman/20211208_2d
+
+dataset:
+  name: human
+  bs: 6  # batchsize
+  image_size: 128
+  train:
+    random_background: False
+    data_root: /data/unagi0/noguchi/dataset/THUman/all_person  # <- need change
+    background_path: /data/unagi0/noguchi/dataset/lsun/bedroom128.npy
+  test:
+    random_background: False
+    data_root: /data/unagi0/noguchi/dataset/THUman/all_person  # <- need change
+    background_path: /data/unagi0/noguchi/dataset/lsun/bedroom128.npy
+
+generator_params:
+#  no_nerf_bn: True
+  z_dim: 256
+  patch_size: 32
+#  use_nerf: Ture
+  cnn_based: False
+#  z_bg_dim: 0
+  nerf_params:
+    hidden_size: 256  # hidden size of NeRF
+    out_dim: 256  # output channel of NeRF
+    Nc: 48  # number of points for coarse sampling
+    Nf: 48  # number of points for fine sampling
+    no_world_pose: True
+    no_ray_direction: True
+    concat: True
+#    density_activation: MyReLU
+    density_scale: 1
+    # concat model
+    mask_input: True
+#    hard_mask: False
+    use_scale_factor: True
+
+discriminator_params:
+  minibatch_std: False
+
+loss:
+  adv_loss_type: ce
+  bone_guided_coef: 3
+  nerf_coef: 1
+  color_coef: 1
+  mask_coef: 3
+  push_to_background_coef: 5
+  nerf_loss_type: mse
+  r1_loss_coef: 10
+  loss_adv_gen_img_coef: 0.3
+  loss_adv_gen_pose_coef: 1
+  distance_coef: 0.2
+
+
+consistency_regularization: False
+consistency_regularization_coef: 0.0
+
+num_iter: 800000
+
+# snapshots
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/20211012_2d/snapshot_latest.pth

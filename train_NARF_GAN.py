@@ -342,7 +342,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             #     if "activate.bias" in k:
             #         snapshot["gen"][k[:-13] + "bias"] = snapshot["gen"][k].reshape(1, -1, 1, 1)
             #         del snapshot["gen"][k]
-            gen_module.load_state_dict(snapshot["gen"], strict=True)
+            gen_module.load_state_dict(snapshot["gen"], strict=False)
             dis_module.load_state_dict(snapshot["dis"])
             # gen.init_bg()
             # gen_optimizer = optim.Adam(gen.parameters(), lr=1e-3, betas=(0, 0.99))
@@ -353,6 +353,19 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             # start_time = snapshot["start_time"]
             del snapshot
     init_iter = iter
+
+    # for debug
+    # with torch.profiler.profile(
+    #         activities=[
+    #             torch.profiler.ProfilerActivity.CPU,
+    #             torch.profiler.ProfilerActivity.CUDA],
+    #
+    #         schedule=torch.profiler.schedule(
+    #             wait=2,
+    #             warmup=2,
+    #             active=5),
+    #         on_trace_ready=torch.profiler.tensorboard_trace_handler(
+    #             '/data/unagi0/noguchi/D1/NARF_GAN/profile/tb_log'), ) as p:
     while iter < num_iter:
         for i, (img, pose) in enumerate(zip(loader_img, loader_pose)):
             if (iter + 1) % 10 == 0 and rank == 0:
@@ -375,6 +388,14 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
             fake_img = train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length, inv_intrinsic,
                                   bone_loss_func, bone_mask, dis, ddp, world_size, gen_optimizer, dis_optimizer,
                                   adv_loss_type, rank, writer, real_img, r1_loss_coef)
+            # try:
+            #     fake_img = train_step(iter, batchsize, gen, pose_to_camera, pose_to_world, bone_length, inv_intrinsic,
+            #                           bone_loss_func, bone_mask, dis, ddp, world_size, gen_optimizer, dis_optimizer,
+            #                           adv_loss_type, rank, writer, real_img, r1_loss_coef)
+            # except:
+            #     print("failed")
+            #     torch.cuda.empty_cache()
+            #     continue
 
             if rank == 0:
                 if iter == 10:
@@ -405,6 +426,7 @@ def train_func(config, datasets, data_loaders, rank, ddp=False, world_size=1):
 
             # torch.cuda.empty_cache()
             iter += 1
+            # p.step()
 
 
 if __name__ == "__main__":

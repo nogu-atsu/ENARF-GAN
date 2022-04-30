@@ -1,29 +1,30 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/SSO/20220215_zju315_deform_triplane
+out: THUman/SSO/20220220_zju315_narf
 
 dataset:
   name: human_v2
   bs: 16  # batchsize
   image_size: 512
   train:
-    data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_315/train_cache_2085  # <- need change
-    n_frames: 2085
+    data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_377/train_cache_517  # <- need change
+    n_frames: 517
   val:
     train:
-      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_315/train_cache_10  # <- need change
-      n_frames: 10
+      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_377/train_cache_517  # <- need change
+      n_frames: 517
     novel_view:
-      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_315/test_novel_view_cache_2085  # <- need change
-      n_frames: 2085
+      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_377/test_novel_view_cache_517  # <- need change
+      n_frames: 517
     novel_pose:
-      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_315/test_novel_pose_cache_100  # <- need change
+      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_377/test_novel_pose_cache_100  # <- need change
       n_frames: 100
 
 
 generator_params:
-  use_triplane: True
+  use_triplane: False
+  ray_batchsize: 512
   nerf_params:
     hidden_size: 256  # hidden size of NeRF
     Nc: 48  # number of points for coarse sampling
@@ -32,8 +33,9 @@ generator_params:
     # concat model
     origin_location: center  # origin of local coordinate, root or center
     coordinate_scale: 3
-    deformation_field: True
-    render_bs: 16384
+    render_bs: 2048
+    # mlp model
+    model_type: "narf"
 
 loss:
   color_coef: 1
@@ -41,7 +43,7 @@ loss:
   nerf_loss_type: mae
 
 # hyper parameters
-num_iter: 150000
+num_iter: 200000
 lr: 0.001
 scheduler_gamma: 0.99995
 val_interval: 500 # validation interval

@@ -632,12 +632,35 @@ class TriPlaneNeRF(NeRFBase):
             self.density_fc = StyledConv1d(32, 1, self.z2_dim)
             self.mlp = StyledMLP(32 + 3 * nffo * 2, 64, 3, style_dim=self.z2_dim)
         else:
+            print("not view dependent")
             self.mlp = StyledMLP(32, 64, 4, style_dim=self.z2_dim)
 
         self.bce = nn.BCEWithLogitsLoss()
         self.l1 = nn.L1Loss()
 
         self.temporal_state = {}
+
+    @property
+    def memory_cost(self):
+        m = 0
+        for layer in self.children():
+            if isinstance(layer, (StyledConv1d, EqualConv1d, StyledMLP)):
+                m += layer.memory_cost
+        return m
+
+    @property
+    def flops(self):
+        fl = 0
+        for layer in self.children():
+            if isinstance(layer, (StyledConv1d, EqualConv1d, StyledMLP)):
+                fl += layer.flops
+
+        if self.z_dim > 0:
+            fl += self.hidden_size * 2
+        if self.use_bone_length:
+            fl += self.hidden_size
+        fl += self.hidden_size * 2
+        return fl
 
     def prepare_stylegan2(self, in_channels):
         G_kwargs = dnnlib.EasyDict(class_name='training.networks.Generator', z_dim=self.z_dim, w_dim=self.w_dim,
@@ -745,6 +768,7 @@ class TriPlaneNeRF(NeRFBase):
         assert position_validity.dtype == torch.bool
         valid_args = torch.where(position_validity)[0]  # (num_valid, )
         num_valid = valid_args.shape[0]
+        # self.valid_canonical_pos += num_valid
         if num_valid > 0:
             # print(len(valid_args) / batchsize / n)
             position_perm = position.permute(2, 0, 1, 3).reshape(3, batchsize * n_bone * n)  # (3, B * n_bone * n)
