@@ -11,8 +11,9 @@ import torch.optim as optim
 import torchvision.models as models
 from torch.utils.data import DataLoader
 
-from NARF.utils import record_setting, yaml_config, write
-from NARF.visualization_utils import save_img
+from utils.train_utils import record_setting, write
+from utils.config import yaml_config
+from utils.visualization_utils import save_img
 from dataset import THUmanDataset, HumanDataset
 from models.loss import nerf_patch_loss
 from models.net import NeRFNRGenerator, TriNeRFGenerator

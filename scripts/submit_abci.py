@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 sys.path.append(".")
-from NARF.utils import yaml_config
+from utils.config import yaml_config
 
 config_paths = [
     # "configs/SSO/ZJU/cvpr_exp/20220224_zju313_narf.yml",

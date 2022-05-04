@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 from tqdm import tqdm
 
-from NARF.models.model_utils import in_cube
+from models.nerf_utils import in_cube
 
 
 class NeRFBase(nn.Module):

@@ -37,3 +37,4 @@ def mask_based_sampler(mask: torch.Tensor, ray_batchsize: int
     homo_img = torch.cat([rays, torch.ones(batchsize, 1, ray_batchsize, device="cuda")], dim=1)  # B x 3 x n
     homo_img = homo_img.reshape(batchsize, 1, 3, -1)
     return ray_idx, homo_img
+

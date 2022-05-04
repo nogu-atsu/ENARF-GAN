@@ -14,12 +14,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from NARF.models.loss import SparseLoss
-from NARF.models.model_utils import all_reduce
-from NARF.utils import yaml_config, write
-from NARF.visualization_utils import ssim, psnr, lpips
 from dataset import SSODataset
 from models.loss import loss_dist_func
 from models.net import SSONARFGenerator
+from utils.config import yaml_config
+from utils.train_utils import all_reduce
+from utils.train_utils import write
+from utils.visualization_utils import ssim, psnr, lpips
 
 warnings.filterwarnings('ignore')
 

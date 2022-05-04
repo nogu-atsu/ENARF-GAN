@@ -12,7 +12,7 @@ from scipy.spatial.transform import Slerp
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from NARF.models.utils_3d import THUmanPrior, CameraProjection, create_mask, pose_to_image_coord
+from models.utils_3d import THUmanPrior, CameraProjection, create_mask, pose_to_image_coord
 
 
 class HumanDatasetBase(Dataset):

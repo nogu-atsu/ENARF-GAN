@@ -12,9 +12,9 @@ from tqdm import tqdm
 from easydict import EasyDict as edict
 
 sys.path.append(".")
-from NARF.utils import yaml_config
 from dataset import SurrealPoseDepthDataset
 from models.net import NeRFNRGenerator, TriNeRFGenerator
+from utils.config import yaml_config
 
 warnings.filterwarnings('ignore')
 
