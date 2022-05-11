@@ -185,7 +185,6 @@ class NeRFBase(nn.Module):
                                                                        pose_to_camera,
                                                                        inv_intrinsics, near_plane,
                                                                        far_plane, return_camera_coord=True)
-
             if batchsize == 1:  # remove invalid rays
                 depth_min = depth_min[:, :, :, ray_validity[0, 0, 0]]
                 depth_max = depth_max[:, :, :, ray_validity[0, 0, 0]]

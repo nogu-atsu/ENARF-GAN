@@ -714,14 +714,14 @@ class TriPlaneNeRF(NeRFBase):
         self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
 
-    def sample_feature(self, tri_plane_features: torch.tensor, position: torch.tensor, reduction: str = "sum",
+    def sample_feature(self, tri_plane_features: torch.tensor, position: torch.tensor, reduction: str = "prod",
                        batch_idx: Optional[torch.Tensor] = None):
         """sample tri-plane feature at a position
 
-        :param tri_plane_features: (B, feat_dim * 3, size, ?)
+        :param tri_plane_features: (B, ? * 3, h, w)
         :param position: [-1, 1] in meter, (B, 3, n)
-        :param reduction
-        :param batch_idx: index of position in minibatch
+        :param reduction: "prod" or "sum"
+        :param batch_idx: index of data in minibatch
 
         :return: feature: (B, 32, n)
         """
@@ -729,9 +729,11 @@ class TriPlaneNeRF(NeRFBase):
         assert batchsize == 1 or batch_idx is None
         _, _, n = position.shape
         features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
+        # produce 2D coordinate for each tri-plane
         position_2d = position[:, [0, 1, 1, 2, 2, 0]].reshape(batchsize * 3, 2, n)
         position_2d = position_2d.permute(0, 2, 1)[:, :, None]  # (B * 3, n, 1, 2)
 
+        # if batch_idx is not None, place tri-planes side by side to form a single tri-plane (quite tricky)
         if batch_idx is not None:  # transform x coordinate
             actual_batchsize = w // (h + 1)
             scale = 1 / (actual_batchsize * (1 + 1 / h))
@@ -743,14 +745,11 @@ class TriPlaneNeRF(NeRFBase):
         if reduction == "sum":
             feature = feature.sum(dim=1)  # (B, feat_dim, n)
         elif reduction == "prod":
-            # feature = torch.pow(torch.sigmoid(feature), 1 / 3).prod(dim=1)
             if self.config.clamp_mask:
                 feature = (feature.data.clamp(-2, 5) - feature.data) + feature
             feature = torch.sigmoid(feature).prod(dim=1)
         else:
             raise ValueError()
-        # for debug
-        # feature = features.reshape(batchsize * 3, -1, h * w).repeat(1, 1, 20)[:batchsize, :, :n]
         return feature
 
     def sample_weighted_feature_v2(self, tri_plane_features: torch.Tensor, position: torch.Tensor,
@@ -759,22 +758,21 @@ class TriPlaneNeRF(NeRFBase):
         batchsize, n_bone, n = position_validity.shape
         _, ch, tri_size, _ = tri_plane_features.shape
 
-        # pad feature
+        # place tri-planes side by side to form a single tri-plane (quite tricky)
         feature_padded = F.pad(tri_plane_features, (0, 1))  # (B, ch, 256, 257)
         feature_padded = feature_padded.permute(1, 2, 0, 3).reshape(1, ch, tri_size, (tri_size + 1) * batchsize)
 
-        # gather
+        # gather valid rays
         position_validity = position_validity.reshape(-1)
         assert position_validity.dtype == torch.bool
         valid_args = torch.where(position_validity)[0]  # (num_valid, )
         num_valid = valid_args.shape[0]
-        # self.valid_canonical_pos += num_valid
-        if num_valid > 0:
-            # print(len(valid_args) / batchsize / n)
+
+        if num_valid > 0:  # num_valid is 3e7 for zju dataset
             position_perm = position.permute(2, 0, 1, 3).reshape(3, batchsize * n_bone * n)  # (3, B * n_bone * n)
             valid_positions = torch.gather(position_perm, dim=1,
                                            index=valid_args[None].expand(3, -1))[None]  # (1, 3, num_valid)
-
+            # challenge: this is very heavy
             value = self.sample_feature(feature_padded, valid_positions,
                                         batch_idx=valid_args // (n_bone * n))  # (1, 32, num_valid)
 
@@ -806,13 +804,14 @@ class TriPlaneNeRF(NeRFBase):
             h = self.selector(encoded_p)
             weight = torch.softmax(h, dim=1)  # (B, n_bone, n)
         else:  # tri-plane based
-            # position = position.reshape(bs * n_bone, 1, 3, n)
-            # weight = self.sample_point_feature_(tri_plane_weights,
-            #                                     position)  # , padding_value=-1e8)  # (B * n_bone, 1, 1, n)
-
             position = position.reshape(bs * n_bone, 3, n)
-            if mode == "sum":
-                # sum and softmax
+
+            # default mode is prod
+            if mode == "prod":
+                # sample prob from tri-planes and compute product
+                weight = self.sample_feature(tri_plane_weights, position, reduction="prod")  # (B * n_bone, 1, n)
+                weight = weight.reshape(bs, n_bone, n)
+            elif mode == "sum":  # sum and softmax
                 weight = self.sample_feature(tri_plane_weights, position)  # (B * n_bone, 1, n)
                 weight = weight.reshape(bs, n_bone, n)
 
@@ -820,10 +819,6 @@ class TriPlaneNeRF(NeRFBase):
                 weight = weight - ~position_validity * 1e4
                 weight = torch.softmax(weight, dim=1)
 
-            elif mode == "prod":
-                # sigmoid and prod
-                weight = self.sample_feature(tri_plane_weights, position, reduction="prod")  # (B * n_bone, 1, n)
-                weight = weight.reshape(bs, n_bone, n)
             else:
                 weight = torch.ones(bs, n_bone, n, device=position.device) / n_bone
 
@@ -844,7 +839,7 @@ class TriPlaneNeRF(NeRFBase):
         R = pose_to_camera[:, :, :3, :3]  # (B, n_bone, 3, 3)
         inv_R = R.permute(0, 1, 3, 2)
         t = pose_to_camera[:, :, :3, 3:]  # (B, n_bone, 3, 1)
-        local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n*Nc)
+        local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n)
 
         # to canonical coordinate
         canonical_scale = (self.canonical_bone_length[:, None] / bone_length / self.coordinate_scale)[:, :, :, None]
@@ -862,7 +857,7 @@ class TriPlaneNeRF(NeRFBase):
                                                  bone_length: torch.Tensor, z, z_rend, ray_direction):
         """compute density from positions in camera coordinate
 
-        :param position:
+        :param position: (B, 3, n), n is a very large number of points sampled
         :param pose_to_camera:
         :param bone_length:
         :param z:
@@ -870,13 +865,14 @@ class TriPlaneNeRF(NeRFBase):
         :param ray_direction:
         :return: density of input positions
         """
+        # to local and canonical coordinate (challenge: this is heavy (B, n_bone * 3, n))
         local_points, canonical_points = self.to_local_and_canonical(position, pose_to_camera, bone_length)
 
         in_cube_p = in_cube(local_points)  # (B, n_bone, n)
         in_cube_p = in_cube_p * (canonical_points.abs() < 1).all(dim=2)  # (B, n_bone, n)
         density, color = self.backbone(canonical_points, in_cube_p, z, z_rend, bone_length, "weight_feature",
                                        ray_direction)
-        density *= in_cube_p.any(dim=1, keepdim=True)
+        density *= in_cube_p.any(dim=1, keepdim=True)  # density is 0 if not in cube
 
         if not self.training:
             self.temporal_state.update({
@@ -923,19 +919,20 @@ class TriPlaneNeRF(NeRFBase):
                 self.buffers_tensors = {}
 
             self.buffers_tensors["mask_weight"] = weight
+
+        # default mode is "weight_feature"
+        # weighted sum of tri-plane features
+        if mode == "weight_feature":
+            feature = self.sample_weighted_feature_v2(tri_plane_feature[:, :32 * 3], masked_position,
+                                                      weight,
+                                                      position_validity)  # (B, 32, n)
         # canonical position based
-        if mode == "weight_position":
+        elif mode == "weight_position":
             weighted_position_validity = position_validity.any(dim=1)[:, None]
             weighted_position = (p * weight[:, :, None]).sum(dim=1)  # (bs, 3, n)
             # Make the invalid position outside the range of -1 to 1 (all invalid positions become 2)
             weighted_position = weighted_position * weighted_position_validity + 2 * ~weighted_position_validity
             feature = self.sample_feature(tri_plane_feature[:, :32 * 3], weighted_position)  # (B, 32, n)
-
-        # concat position based
-        elif mode == "weight_feature":
-            feature = self.sample_weighted_feature_v2(tri_plane_feature[:, :32 * 3], masked_position,
-                                                      weight,
-                                                      position_validity)  # (B, 32, n)
         else:
             raise ValueError()
 
