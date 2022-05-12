@@ -228,29 +228,12 @@ class NeRFBase(nn.Module):
         """
         raise NotImplementedError()
 
-    def coarse_to_fine_sample(self, image_coord: torch.tensor, pose_to_camera: torch.tensor,
-                              inv_intrinsics: torch.tensor, z: torch.tensor, z_rend: torch.tensor,
-                              bone_length: torch.tensor = None, near_plane: float = 0.3, far_plane: float = 5,
-                              Nc: int = 64, Nf: int = 128, render_scale: float = 1,
-                              camera_pose: Optional[torch.Tensor] = None
-                              ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor],
-                                         Optional[torch.Tensor], Optional[torch.Tensor]]:
-        """
-
-        :param image_coord:
-        :param pose_to_camera:
-        :param inv_intrinsics:
-        :param z: z for NeRF, tri-plane for TriNeRF
-        :param z_rend:
-        :param bone_length:
-        :param near_plane:
-        :param far_plane:
-        :param Nc:
-        :param Nf:
-        :param render_scale:
-        :param camera_pose:
-        :return:
-        """
+    def coarse_sample(self, image_coord: torch.tensor, pose_to_camera: torch.tensor,
+                      inv_intrinsics: torch.tensor, near_plane: float = 0.3, far_plane: float = 5,
+                      Nc: int = 64, camera_pose: Optional[torch.Tensor] = None
+                      ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor],
+                                 Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor],
+                                 Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         batchsize, _, _, n = image_coord.shape
         num_bone = self.num_bone
         with torch.no_grad():
@@ -284,51 +267,87 @@ class NeRFBase(nn.Module):
                 coarse_points = start.unsqueeze(-1) * (1 - bins) + end.unsqueeze(-1) * bins  # (B, 3, n, (Nc+1))
                 coarse_points = (coarse_points[:, :, :, 1:] + coarse_points[:, :, :, :-1]) / 2
                 coarse_points = coarse_points.reshape(batchsize, 3, -1)
-
-                coarse_density, _ = self.calc_density_and_color_from_camera_coord(coarse_points, pose_to_camera,
-                                                                                  bone_length,
-                                                                                  z, z_rend, ray_direction=None)
-
-                Np = coarse_depth.shape[-1]  # Nc or Nc + 1
-                # calculate weight for fine sampling
-                coarse_density = coarse_density.reshape(batchsize, 1, -1, Nc)[:, :, :, :Np - 1]
-                # # delta = distance between adjacent samples
-                delta = coarse_depth[:, :, :, 1:] - coarse_depth[:, :, :, :-1]  # B x 1 x n x Np - 1
-
-                density_delta = coarse_density * delta * render_scale
-                T_i = torch.exp(-(torch.cumsum(density_delta, dim=3) - density_delta))
-                weights = T_i * (1 - torch.exp(-density_delta))  # B x 1 x n x Np-1
-                weights = weights.reshape(-1, Np - 1)
-
-                # fine ray sampling
-                weights = F.pad(weights, (1, 1, 0, 0))
-                weights = (torch.maximum(weights[:, :-2], weights[:, 1:-1]) +
-                           torch.maximum(weights[:, 1:-1], weights[:, 2:])) / 2 + 0.01
-                bins = (torch.multinomial(weights,
-                                          Nf, replacement=True).reshape(batchsize, 1, -1, Nf).float() / Nc +
-                        torch.cuda.FloatTensor(batchsize, 1, n, Nf).uniform_() / Nc)
-
-                # sort points
-                bins = torch.sort(bins, dim=-1)[0]
-                fine_depth = depth_min.unsqueeze(3) * (1 - bins) + depth_max.unsqueeze(3) * bins  # (B, 1, n, Nf)
-
-                fine_points = start.unsqueeze(3) * (1 - bins) + end.unsqueeze(3) * bins  # (B, 3, n, Nf)
-
-                fine_points = fine_points.reshape(batchsize, 3, -1)
-
-                if not self.training:
-                    self.temporal_state.update({
-                        "coarse_density": coarse_density,
-                        "coarse_T_i": T_i,
-                        "coarse_weights": weights,
-                        "coarse_depth": coarse_depth,
-                        "fine_depth": fine_depth,
-                        "fine_points": fine_points,
-                        "near_plane": near_plane,
-                        "far_plane": far_plane
-                    })
+                return (coarse_depth, ray_direction_in_world, coarse_points,
+                        ray_validity, n, depth_min, depth_max, start, end)
             else:
-                return (None,) * 4
+                return (None,) * 9
+
+    def coarse_to_fine_sample(self, image_coord: torch.tensor, pose_to_camera: torch.tensor,
+                              inv_intrinsics: torch.tensor, z: torch.tensor, z_rend: torch.tensor,
+                              bone_length: torch.tensor = None, near_plane: float = 0.3, far_plane: float = 5,
+                              Nc: int = 64, Nf: int = 128, render_scale: float = 1,
+                              camera_pose: Optional[torch.Tensor] = None
+                              ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor],
+                                         Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """
+
+        :param image_coord:
+        :param pose_to_camera:
+        :param inv_intrinsics:
+        :param z: z for NeRF, tri-plane for TriNeRF
+        :param z_rend:
+        :param bone_length:
+        :param near_plane:
+        :param far_plane:
+        :param Nc:
+        :param Nf:
+        :param render_scale:
+        :param camera_pose:
+        :return:
+        """
+        batchsize, _, _, _ = image_coord.shape
+        num_bone = self.num_bone
+
+        (coarse_depth, ray_direction_in_world, coarse_points,
+         ray_validity, n, depth_min, depth_max, start, end) = self.coarse_sample(image_coord, pose_to_camera,
+                                                                                 inv_intrinsics, near_plane, far_plane,
+                                                                                 Nc, camera_pose)
+        if coarse_depth is None:
+            return (None,) * 4
+
+        coarse_density, _ = self.calc_density_and_color_from_camera_coord(coarse_points, pose_to_camera,
+                                                                          bone_length,
+                                                                          z, z_rend, ray_direction=None)
+
+        Np = coarse_depth.shape[-1]  # Nc or Nc + 1
+        # calculate weight for fine sampling
+        coarse_density = coarse_density.reshape(batchsize, 1, -1, Nc)[:, :, :, :Np - 1]
+        # # delta = distance between adjacent samples
+        delta = coarse_depth[:, :, :, 1:] - coarse_depth[:, :, :, :-1]  # B x 1 x n x Np - 1
+
+        density_delta = coarse_density * delta * render_scale
+        T_i = torch.exp(-(torch.cumsum(density_delta, dim=3) - density_delta))
+        weights = T_i * (1 - torch.exp(-density_delta))  # B x 1 x n x Np-1
+        weights = weights.reshape(-1, Np - 1)
+
+        # fine ray sampling
+        weights = F.pad(weights, (1, 1, 0, 0))
+        weights = (torch.maximum(weights[:, :-2], weights[:, 1:-1]) +
+                   torch.maximum(weights[:, 1:-1], weights[:, 2:])) / 2 + 0.01
+
+        bins = (torch.multinomial(weights,
+                                  Nf, replacement=True).reshape(batchsize, 1, -1, Nf).float() / Nc +
+                torch.cuda.FloatTensor(batchsize, 1, n, Nf).uniform_() / Nc)
+
+        # sort points
+        bins = torch.sort(bins, dim=-1)[0]
+        fine_depth = depth_min.unsqueeze(3) * (1 - bins) + depth_max.unsqueeze(3) * bins  # (B, 1, n, Nf)
+
+        fine_points = start.unsqueeze(3) * (1 - bins) + end.unsqueeze(3) * bins  # (B, 3, n, Nf)
+
+        fine_points = fine_points.reshape(batchsize, 3, -1)
+
+        if not self.training:
+            self.temporal_state.update({
+                "coarse_density": coarse_density,
+                "coarse_T_i": T_i,
+                "coarse_weights": weights,
+                "coarse_depth": coarse_depth,
+                "fine_depth": fine_depth,
+                "fine_points": fine_points,
+                "near_plane": near_plane,
+                "far_plane": far_plane
+            })
 
         if pose_to_camera.requires_grad:
             raise NotImplementedError("Currently pose should not be differentiable")
