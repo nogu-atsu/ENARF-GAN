@@ -714,7 +714,7 @@ class TriPlaneNeRF(NeRFBase):
         self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
 
-    def sample_feature(self, tri_plane_features: torch.tensor, position: torch.tensor, reduction: str = "prod",
+    def sample_feature(self, tri_plane_features: torch.tensor, position: torch.tensor, reduction: str = "sum",
                        batch_idx: Optional[torch.Tensor] = None):
         """sample tri-plane feature at a position
 
