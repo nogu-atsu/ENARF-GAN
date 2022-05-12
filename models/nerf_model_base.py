@@ -2,10 +2,22 @@ from typing import Tuple, Optional
 
 import torch
 import torch.nn.functional as F
+from pytorch3d.renderer import (
+    FoVPerspectiveCameras,
+    PointLights,
+    RasterizationSettings,
+    MeshRenderer,
+    MeshRasterizer,
+    HardPhongShader,
+    Textures
+)
+from pytorch3d.structures import Meshes
 from torch import nn
 from tqdm import tqdm
 
 from models.nerf_utils import in_cube
+from utils.pytorch3d_utils import compute_projection_matrix_from_inv_intrinsics, \
+    compute_projection_matrix_from_intrinsics
 
 
 class NeRFBase(nn.Module):
@@ -52,6 +64,68 @@ class NeRFBase(nn.Module):
     #
     #     self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
     #     self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
+
+    def create_unit_cube_mesh(self, device: torch.device):
+        verts = torch.tensor([[1, 1, 1], [1, -1, 1], [-1, -1, 1], [-1, 1, 1],
+                              [1, 1, -1], [1, -1, -1], [-1, -1, -1], [-1, 1, -1]], device=device, dtype=torch.float32)
+        verts = verts.permute(1, 0)
+        faces = torch.tensor([[0, 2, 1], [0, 2, 3],
+                              [0, 1, 5], [0, 5, 4],
+                              [1, 2, 6], [1, 6, 5],
+                              [2, 3, 7], [2, 7, 6],
+                              [3, 0, 7], [0, 7, 4],
+                              [4, 5, 6], [4, 6, 7]], device=device)
+        return verts, faces
+
+    def coarse_sample_v2(self, pose_to_camera, inv_intrinsics, img_size):
+        # TODO: compute only once
+        device = pose_to_camera.device
+        batch_size = pose_to_camera.shape[0]
+        num_bone = pose_to_camera.shape[1]
+        verts, faces = self.create_unit_cube_mesh(device=device)
+        with torch.no_grad():
+            # rotation & translation
+            R = pose_to_camera[:, :, :3, :3]  # (B, n_bone, 3, 3)
+            t = pose_to_camera[:, :, :3, 3:]  # (B, n_bone, 3, 1)
+
+            verts = torch.matmul(R, verts[None, None]) + t  # (B, n_bone, 3, 8)
+            verts = verts.permute(0, 1, 3, 2).reshape(batch_size * num_bone, 8, 3)
+            faces = faces[None].expand(batch_size * num_bone, 12, 3)  # (B * n_bone, 12, 3)
+            projection_matrix = compute_projection_matrix_from_inv_intrinsics(inv_intrinsics, img_size)
+            cubes = Meshes(verts=verts, faces=faces)
+            cameras = FoVPerspectiveCameras(device=device, K=projection_matrix)
+            raster_settings = RasterizationSettings(
+                image_size=img_size,
+                blur_radius=1e-11,
+                faces_per_pixel=2,
+            )
+
+            rasterizer = MeshRasterizer(
+                cameras=cameras,
+                raster_settings=raster_settings
+            )
+            zbuf = rasterizer(cubes).zbuf
+            depth_max = zbuf[:, :, :, 1].reshape(batch_size, num_bone,
+                                                 img_size, img_size).max(dim=1)[0]  # (B, img_size, img_size)
+            depth_min = zbuf[:, :, :, 0]
+            depth_min = depth_min.masked_fill(depth_min < 0, 1e9)
+            depth_min = depth_min.reshape(batch_size, num_bone,
+                                          img_size, img_size).min(dim=1)[0]  # (B, img_size, img_size)
+            depth_min = depth_min.masked_fill(depth_min > 1e8, -1)
+
+            # save images for debug
+            import matplotlib.pyplot as plt
+            depth_max_img = depth_max.reshape(batch_size * img_size, img_size).cpu().numpy()
+            depth_min_img = depth_min.reshape(batch_size * img_size, img_size).cpu().numpy()
+            plt.subplot(3, 1, 1)
+            plt.imshow(depth_max_img)
+            plt.subplot(3, 1, 2)
+            plt.imshow(depth_min_img)
+            plt.subplot(3, 1, 3)
+            plt.imshow((depth_max_img - depth_min_img) / self.coordinate_scale)
+            plt.colorbar()
+            # plt.savefig('depth_max_min.png')
+        return depth_max, depth_min
 
     def decide_frustrum_range(self, num_bone, image_coord, pose_to_camera, inv_intrinsics,
                               near_plane, far_plane, return_camera_coord=False):
@@ -558,9 +632,6 @@ class NeRFBase(nn.Module):
                     mesh_th=15, truncation_psi=0.4):
 
         import mcubes
-        from pytorch3d.renderer import (
-            Textures,
-        )
 
         assert z is None or z.shape[0] == 1
         assert bone_length is None or bone_length.shape[0] == 1
@@ -621,17 +692,7 @@ class NeRFBase(nn.Module):
         return images, meshes
 
     def render_mesh_(self, meshes, intrinsics, img_size, render_size=512):
-        from pytorch3d.structures import Meshes
-        from pytorch3d.renderer import (
-            FoVPerspectiveCameras,
-            PointLights,
-            RasterizationSettings,
-            MeshRenderer,
-            MeshRasterizer,
-            HardPhongShader,
-        )
 
-        from utils.pytorch3d_utils import compute_projection_matrix_from_intrinsics
         device = intrinsics.device
         (vertices, triangles, textures) = meshes
         meshes = Meshes(verts=[vertices], faces=[triangles], textures=textures)

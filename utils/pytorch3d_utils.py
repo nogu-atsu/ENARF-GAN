@@ -59,3 +59,19 @@ def compute_projection_matrix_from_intrinsics(K, size):
     device = K.device
     return compute_projection_matrix(min_x, max_x, min_y, max_y,
                                      znear=1.0, zfar=100.0, device=device)
+
+
+def compute_projection_matrix_from_inv_intrinsics(inv_K, size):
+    """
+    Compute the calibration matrix K of shape (N, 4, 4)
+    :param inv_K: intrinsics, (N, 3, 3)
+    :param size: image size, int
+    :return:
+    """
+    max_x = -inv_K[:, 0, 2]
+    max_y = -inv_K[:, 1, 2]
+    min_x = -size * inv_K[:, 0, 0] + max_x
+    min_y = -size * inv_K[:, 1, 1] + max_y
+    device = inv_K.device
+    return compute_projection_matrix(min_x, max_x, min_y, max_y,
+                                     znear=1.0, zfar=100.0, device=device)
