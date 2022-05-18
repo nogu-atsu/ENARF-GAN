@@ -11,7 +11,6 @@ import triplane_sampler_cuda
 GRID_SAMPLE_INTERPOLATION_MODES = {
     "bilinear": 0,
     "nearest": 1,
-    "bicubic": 2,
 }
 
 GRID_SAMPLE_PADDING_MODES = {
@@ -71,6 +70,54 @@ def grid_sampler(input, grid, mode='bilinear', padding_mode='zeros', align_corne
 
 class TriplaneSamplerFunction(torch.autograd.Function):
     @staticmethod
+    def forward(ctx, input, grid, mode='bilinear', padding_mode='zeros', align_corners=False, output_mask=(True, True)):
+        """
+        grid_sample feature and probability for each part from triplane and sum up
+        :param ctx:
+        :param input: (B, C, H, W)
+        :param grid: (B, h, w, 2)
+        :param mode: 'bilinear' or 'nearest'
+        :param padding_mode:
+        :param align_corners:
+        :return: sampled features (B, n)
+        """
+        mode_enum = GRID_SAMPLE_INTERPOLATION_MODES[mode]
+        padding_mode_enum = GRID_SAMPLE_PADDING_MODES[padding_mode]
+        sampled = triplane_sampler_cuda.triplane_sampler_forward(input, grid, mode_enum, padding_mode_enum,
+                                                                 align_corners)
+        ctx.save_for_backward(input, grid)
+        ctx.mode_enum = mode_enum
+        ctx.padding_mode_enum = padding_mode_enum
+        ctx.align_corners = align_corners
+        ctx.output_mask = output_mask
+        return sampled
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        backward for grid_sample
+        :param ctx:
+        :param grad_output:
+        :return:
+        """
+        input, grid = ctx.saved_tensors
+        mode_enum = ctx.mode_enum
+        padding_mode_enum = ctx.padding_mode_enum
+        align_corners = ctx.align_corners
+        output_mask = ctx.output_mask
+
+        grad_input, grad_grid = triplane_sampler_cuda.triplane_sampler_backward(
+            grad_output, input, grid, mode_enum, padding_mode_enum, align_corners, output_mask)
+        return grad_input, grad_grid, None, None, None, None
+
+
+def triplane_sampler(input, grid, mode='bilinear', padding_mode='zeros', align_corners=False):
+    output_mask = (input.requires_grad, grid.requires_grad)
+    return TriplaneSamplerFunction.apply(input, grid, mode, padding_mode, align_corners, output_mask)
+
+
+class MultiPartTriplaneSamplerFunction(torch.autograd.Function):
+    @staticmethod
     def forward(ctx, triplane, n_parts, triplane_coord_3d, index):
         """
         grid_sample feature and probability for each part from triplane and sum up
@@ -98,9 +145,9 @@ class TriplaneSamplerFunction(torch.autograd.Function):
         return d_triplane, None, None, None
 
 
-class TriplaneSampler(nn.Module):
+class MultiPartTriplaneSampler(nn.Module):
     def __init__(self, n_parts: int, coordinate_scale: float = 3.0, n_coarse: int = 48, n_fine: int = 64):
-        super(TriplaneSampler, self).__init__()
+        super(MultiPartTriplaneSampler, self).__init__()
         self.n_parts = n_parts
         self.coordinate_scale = coordinate_scale
         self.n_coarse = n_coarse
@@ -139,7 +186,7 @@ class TriplaneSampler(nn.Module):
         return triplane_sampler_cuda.inference(triplane, self.n_parts, triplane_coord_3d, index)
 
 
-triplane_sampler = TriplaneSamplerFunction.apply
+# triplane_sampler = TriplaneSamplerFunction.apply
 
 if __name__ == "__main__":
     cuda_device = 'cuda'
