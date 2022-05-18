@@ -24,18 +24,6 @@ __global__ void my_grid_sampler_2d_kernel(
     index_t inp_W = input.size(3);
     index_t out_H = grid.size(1);
     index_t out_W = grid.size(2);
-    index_t inp_sN = input.stride(0);
-    index_t inp_sC = input.stride(1);
-    index_t inp_sH = input.stride(2);
-    index_t inp_sW = input.stride(3);
-    index_t grid_sN = grid.stride(0);
-    index_t grid_sH = grid.stride(1);
-    index_t grid_sW = grid.stride(2);
-    index_t grid_sCoor = grid.stride(3);
-    index_t out_sN = output.stride(0);
-    index_t out_sC = output.stride(1);
-    index_t out_sH = output.stride(2);
-    index_t out_sW = output.stride(3);
 
     CUDA_KERNEL_LOOP_TYPE(index, nthreads, index_t) {
         const index_t w = index % out_W;
@@ -114,20 +102,6 @@ __global__ void my_grid_sampler_2d_backward_kernel(
     index_t inp_W = input.size(3);
     index_t out_H = grid.size(1);
     index_t out_W = grid.size(2);
-    index_t inp_sN = input.stride(0);
-    index_t inp_sC = input.stride(1);
-    index_t inp_sH = input.stride(2);
-    index_t inp_sW = input.stride(3);
-    index_t grid_sN = grid.stride(0);
-    index_t grid_sH = grid.stride(1);
-    index_t grid_sW = grid.stride(2);
-    index_t grid_sCoor = grid.stride(3);
-    index_t gOut_sN = grad_output.stride(0);
-    index_t gOut_sC = grad_output.stride(1);
-    index_t gOut_sH = grad_output.stride(2);
-    index_t gOut_sW = grad_output.stride(3);
-    // gInp_* (and NC_offset below) are not really needed if input_requires_grad is false.
-    index_t gGrid_sW = grad_grid.stride(2);
 
     CUDA_KERNEL_LOOP_TYPE(index, nthreads, index_t) {
         const index_t w = index % out_W;
@@ -169,16 +143,16 @@ __global__ void my_grid_sampler_2d_backward_kernel(
                 if (input_requires_grad) {
                     // calculate and set grad_input. See Note [Passing pointer and offset to fastAtomicAdd].
                     if (within_bounds_2d(iy_nw, ix_nw, inp_H, inp_W)) {
-                        atomicAdd(&grad_input[n][c][iy_nw][ix_nw], nw * gOut);
+                        gpuAtomicAdd(&grad_input[n][c][iy_nw][ix_nw], nw * gOut);
                     }
                     if (within_bounds_2d(iy_ne, ix_ne, inp_H, inp_W)) {
-                        atomicAdd(&grad_input[n][c][iy_ne][ix_ne], ne * gOut);
+                        gpuAtomicAdd(&grad_input[n][c][iy_ne][ix_ne], ne * gOut);
                     }
                     if (within_bounds_2d(iy_sw, ix_sw, inp_H, inp_W)) {
-                        atomicAdd(&grad_input[n][c][iy_sw][ix_sw], sw * gOut);
+                        gpuAtomicAdd(&grad_input[n][c][iy_sw][ix_sw], sw * gOut);
                     }
                     if (within_bounds_2d(iy_se, ix_se, inp_H, inp_W)) {
-                        atomicAdd(&grad_input[n][c][iy_se][ix_se], se * gOut);
+                        gpuAtomicAdd(&grad_input[n][c][iy_se][ix_se], se * gOut);
                     }
                 }
 
@@ -220,7 +194,7 @@ __global__ void my_grid_sampler_2d_backward_kernel(
                 for (index_t c = 0; c < C; ++c) {
                     // calculate and set grad_input. See Note [Passing pointer and offset to fastAtomicAdd].
                     if (within_bounds_2d(iy_nearest, ix_nearest, inp_H, inp_W)) {
-                        atomicAdd(&grad_input[n][c][iy_nearest][ix_nearest], grad_output[n][c][h][w]);
+                        gpuAtomicAdd(&grad_input[n][c][iy_nearest][ix_nearest], grad_output[n][c][h][w]);
                     }
                 }
             }
