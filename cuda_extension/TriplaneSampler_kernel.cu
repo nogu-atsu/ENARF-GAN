@@ -100,7 +100,9 @@ __global__ void triplane_sampler_backward_kernel(
         const GridSamplerInterpolation interpolation_mode,
         const GridSamplerPadding padding_mode,
         bool align_corners,
-        const bool input_requires_grad) {
+        const bool input_requires_grad,
+        const bool grid_requires_grad,
+        const index_t grad_input_memory_span) {
     index_t C = input.size(1) / 3;
     index_t inp_H = input.size(2);
     index_t inp_W = input.size(3);
@@ -163,26 +165,28 @@ __global__ void triplane_sampler_backward_kernel(
                         }
                     }
 
-                    // calculate grad_grid
-                    if (within_bounds_2d(iy_nw, ix_nw, inp_H, inp_W)) {
-                        scalar_t nw_val = input[n][triplane_idx][iy_nw][ix_nw];
-                        gix -= nw_val * (iy_se - iy) * gOut;
-                        giy -= nw_val * (ix_se - ix) * gOut;
-                    }
-                    if (within_bounds_2d(iy_ne, ix_ne, inp_H, inp_W)) {
-                        scalar_t ne_val = input[n][triplane_idx][iy_ne][ix_ne];
-                        gix += ne_val * (iy_sw - iy) * gOut;
-                        giy -= ne_val * (ix - ix_sw) * gOut;
-                    }
-                    if (within_bounds_2d(iy_sw, ix_sw, inp_H, inp_W)) {
-                        scalar_t sw_val = input[n][triplane_idx][iy_sw][ix_sw];
-                        gix -= sw_val * (iy - iy_ne) * gOut;
-                        giy += sw_val * (ix_ne - ix) * gOut;
-                    }
-                    if (within_bounds_2d(iy_se, ix_se, inp_H, inp_W)) {
-                        scalar_t se_val = input[n][triplane_idx][iy_se][ix_se];
-                        gix += se_val * (iy - iy_nw) * gOut;
-                        giy += se_val * (ix - ix_nw) * gOut;
+                    if (grid_requires_grad) {
+                        // calculate grad_grid
+                        if (within_bounds_2d(iy_nw, ix_nw, inp_H, inp_W)) {
+                            scalar_t nw_val = input[n][triplane_idx][iy_nw][ix_nw];
+                            gix -= nw_val * (iy_se - iy) * gOut;
+                            giy -= nw_val * (ix_se - ix) * gOut;
+                        }
+                        if (within_bounds_2d(iy_ne, ix_ne, inp_H, inp_W)) {
+                            scalar_t ne_val = input[n][triplane_idx][iy_ne][ix_ne];
+                            gix += ne_val * (iy_sw - iy) * gOut;
+                            giy -= ne_val * (ix - ix_sw) * gOut;
+                        }
+                        if (within_bounds_2d(iy_sw, ix_sw, inp_H, inp_W)) {
+                            scalar_t sw_val = input[n][triplane_idx][iy_sw][ix_sw];
+                            gix -= sw_val * (iy - iy_ne) * gOut;
+                            giy += sw_val * (ix_ne - ix) * gOut;
+                        }
+                        if (within_bounds_2d(iy_se, ix_se, inp_H, inp_W)) {
+                            scalar_t se_val = input[n][triplane_idx][iy_se][ix_se];
+                            gix += se_val * (iy - iy_nw) * gOut;
+                            giy += se_val * (ix - ix_nw) * gOut;
+                        }
                     }
                 }
 
@@ -202,7 +206,9 @@ __global__ void triplane_sampler_backward_kernel(
                         index_t triplane_idx = c + C * plane_idx;
                         // calculate and set grad_input. See Note [Passing pointer and offset to fastAtomicAdd].
                         if (within_bounds_2d(iy_nearest, ix_nearest, inp_H, inp_W)) {
-                            gpuAtomicAdd(&grad_input[n][triplane_idx][iy_nearest][ix_nearest], grad_output[n][c][h][w]);
+                            fastAtomicAdd(&grad_input[n][triplane_idx][iy_nearest][ix_nearest], 0,
+                                          grad_input_memory_span, grad_output[n][c][h][w], true);
+//                            gpuAtomicAdd(&grad_input[n][triplane_idx][iy_nearest][ix_nearest], grad_output[n][c][h][w]);
                         }
                     }
                 }
@@ -211,8 +217,8 @@ __global__ void triplane_sampler_backward_kernel(
                 // thus we can
                 //   1. use index with gGrid_sW to directly compute gGrid_ptr_NHW
                 //   2. directly assign to gGrid_ptr_NHW[0], gGrid_ptr_NHW[1]
-                grad_grid[n][h][w][plane_idx] = static_cast<scalar_t>(0);
-                grad_grid[n][h][w][(plane_idx + 1) % 3] = static_cast<scalar_t>(0);
+//                grad_grid[n][h][w][plane_idx] = static_cast<scalar_t>(0);
+//                grad_grid[n][h][w][(plane_idx + 1) % 3] = static_cast<scalar_t>(0);
             }
         }
     }
@@ -267,6 +273,7 @@ void launch_triplane_sampler_backward_kernel(
     // the tensor to hold the gradient can markedly increase performance. (`grid` gradient
     // is always computed.)
     auto input_requires_grad = output_mask[0];
+    auto grid_requires_grad = output_mask[1];
 
     int64_t count = N * H * W;
     if (count > 0) {
@@ -285,7 +292,9 @@ void launch_triplane_sampler_backward_kernel(
                     static_cast<GridSamplerInterpolation>(interpolation_mode),
                     static_cast<GridSamplerPadding>(padding_mode),
                     align_corners,
-                    input_requires_grad);
+                    input_requires_grad,
+                    grid_requires_grad,
+                    static_cast<int>(grad_input.numel()));
         });
     }
 }

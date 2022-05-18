@@ -36,10 +36,10 @@ def test_triplane_sampler():
     ch = 32
     in_h, in_w = 256, 256
     out_h, out_w = 3200, 10000
-    a = torch.empty((bs, ch * 3, in_h, in_w), dtype=torch.float32, device="cuda").uniform_().requires_grad_(True)
-    index = torch.empty((bs, out_h, out_w, 3), dtype=torch.float32, device="cuda").uniform_(-1, 1).requires_grad_(True)
+    a = torch.empty((bs, ch * 3, in_h, in_w), dtype=torch.float32, device="cuda").uniform_().requires_grad_(False)
+    index = torch.empty((bs, out_h, out_w, 3), dtype=torch.float32, device="cuda").uniform_(-1, 1).requires_grad_(False)
 
-    n_loop = 100
+    n_loop = 10
 
     # pytorch version
     torch.cuda.synchronize()
@@ -51,12 +51,15 @@ def test_triplane_sampler():
         a_tri = a.reshape(bs * 3, ch, in_h, in_w)
         out1 = F.grid_sample(a_tri, index_tri, mode="bilinear", align_corners=False)
         out1 = out1.reshape(bs, 3, ch, out_h, out_w).sum(dim=1)
-        # out1.sum().backward()
+        if out1.requires_grad:
+            out1.sum().backward()
     torch.cuda.synchronize()
     print("case 1:", time.time() - s)
-    # pytorch_grad_a = a.grad.clone()
-    # pytorch_grad_index = index.grad.clone()
-    # pytorch_out = out1.clone()
+    if a.requires_grad:
+        pytorch_grad_a = a.grad.clone()
+    if index.requires_grad:
+        pytorch_grad_index = index.grad.clone()
+    pytorch_out = out1.clone()
 
     a.grad = None
     index.grad = None
@@ -67,15 +70,17 @@ def test_triplane_sampler():
     for i in range(n_loop):
         torch.cuda.synchronize()
         out1 = triplane_sampler(a, index, mode="bilinear", align_corners=False)
-        # out1.sum().backward()
+        if out1.requires_grad:
+            out1.sum().backward()
     torch.cuda.synchronize()
     print("cpp:", time.time() - s)
-    # cpp_grad_a = a.grad
-    # cpp_grad_index = index.grad
-    #
-    # print(torch.isclose(pytorch_grad_a, cpp_grad_a).all())
-    # print(torch.isclose(pytorch_grad_index, cpp_grad_index).all())
-    # print(torch.isclose(pytorch_out, out1).all())
+    cpp_grad_a = a.grad
+    cpp_grad_index = index.grad
+    if cpp_grad_a is not None:
+        print(torch.isclose(pytorch_grad_a, cpp_grad_a).all())
+    if cpp_grad_index is not None:
+        print(torch.isclose(pytorch_grad_index, cpp_grad_index).all())
+    print(torch.isclose(pytorch_out, out1).all())
 
 
 def test_grid_sampler():
