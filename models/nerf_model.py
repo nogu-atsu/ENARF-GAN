@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
-from models.nerf_model_base import NARFBase
+from dependencies.NARF.base import NARFBase
 from models.nerf_utils import StyledConv1d, encode, positional_encoding, in_cube
 from models.stylegan import EqualConv1d
 from cuda_extension.triplane_sampler import triplane_sampler
