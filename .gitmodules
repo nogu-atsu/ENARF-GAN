@@ -7,6 +7,3 @@
 [submodule "stylegan2_pytorch"]
 	path = stylegan2_pytorch
 	url = git@github.com:rosinality/stylegan2-pytorch.git
-[submodule "style_people"]
-	path = style_people
-	url = git@github.com:saic-vul/style-people.git
