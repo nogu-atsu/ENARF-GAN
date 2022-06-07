@@ -1,3 +1,4 @@
+import time
 from typing import Tuple, Optional
 
 import torch
@@ -23,6 +24,18 @@ from utils.pytorch3d_utils import compute_projection_matrix_from_inv_intrinsics,
 class NARFBase(nn.Module):
     def __init__(self):
         super(NARFBase, self).__init__()
+
+    def time_start(self):
+        torch.cuda.synchronize()
+        start = time.time()
+        return start
+
+    def time_end(self, name, start):
+        torch.cuda.synchronize()
+        end = time.time()
+        if name not in self.buffers_tensors:
+            self.buffers_tensors[name] = 0
+        self.buffers_tensors[name] += end - start
 
     @property
     def memory_cost(self):
