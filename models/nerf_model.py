@@ -15,8 +15,7 @@ from models.nerf_utils import StyledConv1d, encode, positional_encoding, in_cube
 from models.stylegan import EqualConv1d
 from cuda_extension.triplane_sampler import triplane_sampler
 
-sys.path.append("stylegan2-ada-pytorch")
-import dnnlib
+from stylegan2_ada_pytorch import dnnlib
 
 
 class StyledMLP(nn.Module):
