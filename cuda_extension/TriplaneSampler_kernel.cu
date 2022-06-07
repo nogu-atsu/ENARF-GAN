@@ -25,6 +25,8 @@ __global__ void triplane_sampler_forward_kernel(
     index_t out_H = grid.size(1);
     index_t out_W = grid.size(2);
 
+//    index_t index = blockIdx.x * blockDim.x + threadIdx.x;
+//    if (index < nthreads)
     CUDA_KERNEL_LOOP_TYPE(index, nthreads, index_t)
     {
         const index_t w = index % out_W;
@@ -194,8 +196,10 @@ __global__ void triplane_sampler_backward_kernel(
                 // thus we can
                 //   1. use index with gGrid_sW to directly compute gGrid_ptr_NHW
                 //   2. directly assign to gGrid_ptr_NHW[0], gGrid_ptr_NHW[1]
-                grad_grid[n][h][w][plane_idx] += gix_mult * gix;
-                grad_grid[n][h][w][(plane_idx + 1) % 3] += giy_mult * giy;
+                if (grid_requires_grad) {
+                    grad_grid[n][h][w][plane_idx] += gix_mult * gix;
+                    grad_grid[n][h][w][(plane_idx + 1) % 3] += giy_mult * giy;
+                }
             } else if (interpolation_mode == GridSamplerInterpolation::Nearest) {
                 if (input_requires_grad) {
                     index_t ix_nearest = static_cast<index_t>(::round(ix));
@@ -285,9 +289,6 @@ void launch_triplane_sampler_backward_kernel(
                     input.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
                     grid.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
                     grad_input.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
-//                    input_requires_grad ? grad_input.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>()
-//                                                input.new_zeros(
-//                            {0, 0, 0, 0}).packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
                     grad_grid.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
                     static_cast<GridSamplerInterpolation>(interpolation_mode),
                     static_cast<GridSamplerPadding>(padding_mode),

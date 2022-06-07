@@ -108,6 +108,10 @@ class TriplaneSamplerFunction(torch.autograd.Function):
 
         grad_input, grad_grid = triplane_sampler_cuda.triplane_sampler_backward(
             grad_output, input, grid, mode_enum, padding_mode_enum, align_corners, output_mask)
+        if output_mask[0]:
+            grad_input = None
+        if output_mask[1]:
+            grad_grid = None
         return grad_input, grad_grid, None, None, None, None
 
 

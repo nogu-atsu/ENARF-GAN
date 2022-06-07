@@ -13,6 +13,7 @@ from NARF.models.nerf_model import NeRF
 from models.nerf_model_base import NeRFBase
 from models.nerf_utils import StyledConv1d, encode, positional_encoding, in_cube
 from models.stylegan import EqualConv1d
+from cuda_extension.triplane_sampler import triplane_sampler
 
 sys.path.append("stylegan2-ada-pytorch")
 import dnnlib
@@ -728,28 +729,34 @@ class TriPlaneNeRF(NeRFBase):
         batchsize, _, h, w = tri_plane_features.shape
         assert batchsize == 1 or batch_idx is None
         _, _, n = position.shape
-        features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
-        # produce 2D coordinate for each tri-plane
-        position_2d = position[:, [0, 1, 1, 2, 2, 0]].reshape(batchsize * 3, 2, n)
-        position_2d = position_2d.permute(0, 2, 1)[:, :, None]  # (B * 3, n, 1, 2)
-
-        # if batch_idx is not None, place tri-planes side by side to form a single tri-plane (quite tricky)
-        if batch_idx is not None:  # transform x coordinate
-            actual_batchsize = w // (h + 1)
-            scale = 1 / (actual_batchsize * (1 + 1 / h))
-            position_2d[:, :, :, 0] = (position_2d[:, :, :, 0] * scale +
-                                       batch_idx[None, :, None] * (2 / actual_batchsize) + (scale - 1))
-
-        feature = F.grid_sample(features, position_2d, align_corners=False)
-        feature = feature.reshape(batchsize, 3, -1, n)
-        if reduction == "sum":
-            feature = feature.sum(dim=1)  # (B, feat_dim, n)
-        elif reduction == "prod":
-            if self.config.clamp_mask:
-                feature = (feature.data.clamp(-2, 5) - feature.data) + feature
-            feature = torch.sigmoid(feature).prod(dim=1)
+        if batchsize == 1 and reduction == "sum":
+            print("called")
+            position_2d = position.permute(0, 2, 1).contiguous()[:, :, None, :]
+            feature = triplane_sampler(tri_plane_features, position_2d)[:, :, :, 0]
         else:
-            raise ValueError()
+            features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
+            # produce 2D coordinate for each tri-plane
+            position_2d = position[:, [0, 1, 1, 2, 2, 0]].reshape(batchsize * 3, 2, n)
+            position_2d = position_2d.permute(0, 2, 1)[:, :, None]  # (B * 3, n, 1, 2)
+
+            # if batch_idx is not None, place tri-planes side by side to form a single tri-plane (quite tricky)
+            if batch_idx is not None:  # transform x coordinate
+                actual_batchsize = w // (h + 1)
+                scale = 1 / (actual_batchsize * (1 + 1 / h))
+                position_2d[:, :, :, 0] = (position_2d[:, :, :, 0] * scale +
+                                           batch_idx[None, :, None] * (2 / actual_batchsize) + (scale - 1))
+
+            feature = F.grid_sample(features, position_2d, align_corners=False)
+            # feature = torch.cudnn_grid_sampler(features, position_2d)
+            feature = feature.reshape(batchsize, 3, -1, n)
+            if reduction == "sum":
+                feature = feature.sum(dim=1)  # (B, feat_dim, n)
+            elif reduction == "prod":
+                if self.config.clamp_mask:
+                    feature = (feature.data.clamp(-2, 5) - feature.data) + feature
+                feature = torch.sigmoid(feature).prod(dim=1)
+            else:
+                raise ValueError()
         return feature
 
     def sample_weighted_feature_v2(self, tri_plane_features: torch.Tensor, position: torch.Tensor,
