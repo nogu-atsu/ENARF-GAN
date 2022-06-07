@@ -20,9 +20,9 @@ from utils.pytorch3d_utils import compute_projection_matrix_from_inv_intrinsics,
     compute_projection_matrix_from_intrinsics
 
 
-class NeRFBase(nn.Module):
+class NARFBase(nn.Module):
     def __init__(self):
-        super(NeRFBase, self).__init__()
+        super(NARFBase, self).__init__()
 
     @property
     def memory_cost(self):

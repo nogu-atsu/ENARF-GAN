@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
-from models.nerf_model_base import NeRFBase
+from models.nerf_model_base import NARFBase
 from models.nerf_utils import StyledConv1d, encode, positional_encoding, in_cube
 from models.stylegan import EqualConv1d
 from cuda_extension.triplane_sampler import triplane_sampler
@@ -524,10 +524,10 @@ class StyleNeRF(NeRF):
         return images, meshes
 
 
-class TriPlaneNeRF(NeRFBase):
+class TriPlaneNARF(NARFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=True, parent=None, num_bone_param=None, view_dependent: bool = False):
-        super(TriPlaneNeRF, self).__init__()
+        super(TriPlaneNARF, self).__init__()
         assert bone_length
         assert num_bone_param is not None
         assert hasattr(config, "origin_location")
@@ -972,7 +972,7 @@ class TriPlaneNeRF(NeRFBase):
         return tri_plane_feature
 
 
-class SSONARF(NeRFBase):
+class SSONARF(NARFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=False, parent=None, num_bone_param=None, view_dependent: bool = True):
         super(SSONARF, self).__init__()

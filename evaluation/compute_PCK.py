@@ -22,7 +22,7 @@ except (ImportError, ModuleNotFoundError):
 sys.path.append(".")
 from utils.config import yaml_config
 from dataset import THUmanPoseDataset, HumanPoseDataset
-from models.net import NeRFNRGenerator, TriNeRFGenerator
+from models.net import NARFNRGenerator, TriNARFGenerator
 
 warnings.filterwarnings('ignore')
 
@@ -222,14 +222,14 @@ def main(config, batch_size=4, num_sample=10_000):
     gen_config = config.generator_params
 
     if gen_config.use_triplane:
-        gen = TriNeRFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+        gen = TriNARFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                                num_bone_param=pose_dataset.num_bone_param,
                                parent_id=pose_dataset.parents,
                                black_background=is_VAE)
         gen.register_canonical_pose(pose_dataset.canonical_pose)
         gen.to("cuda")
     else:
-        gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+        gen = NARFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                               num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents).to("cuda")
     out_dir = config.out_root
     out_name = config.out

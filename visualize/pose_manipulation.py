@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 sys.path.append(".")
 from dataset import HumanPoseDataset
-from models.net import TriNeRFGenerator
+from models.net import TriNARFGenerator
 from utils.config import yaml_config
 from utils.rotation_utils import rotate_pose_by_angle, rotate_mesh_by_angle
 
@@ -63,7 +63,7 @@ def main(mode: str = "pose_manipulation"):
     gen_config = config.generator_params
 
     if gen_config.use_triplane:
-        gen = TriNeRFGenerator(gen_config, size, num_bone=sequence_dataset.num_bone,
+        gen = TriNARFGenerator(gen_config, size, num_bone=sequence_dataset.num_bone,
                                num_bone_param=sequence_dataset.num_bone_param,
                                parent_id=sequence_dataset.parents,
                                black_background=False)

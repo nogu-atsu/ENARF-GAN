@@ -13,7 +13,7 @@ from models.model_utils import mask_based_sampler
 from NARF.models.net import NeRF
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d, Blur
-from models.nerf_model import StyleNeRF, TriPlaneNeRF, SSONARF
+from models.nerf_model import StyleNeRF, TriPlaneNARF, SSONARF
 from utils.rotation_utils import rotation_6d_to_matrix
 
 
@@ -133,9 +133,9 @@ class StyleNeRFRenderer(nn.Module):
         return color
 
 
-class NeRFNRGenerator(nn.Module):  # NeRF + Neural Rendering
+class NARFNRGenerator(nn.Module):  # NeRF + Neural Rendering
     def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None):
-        super(NeRFNRGenerator, self).__init__()
+        super(NARFNRGenerator, self).__init__()
         self.config = config
         self.size = size
         self.num_bone = num_bone
@@ -581,9 +581,9 @@ class PretrainedStyleGAN(nn.Module):
         return sample, None
 
 
-class TriNeRFGenerator(nn.Module):  # tri-plane nerf
+class TriNARFGenerator(nn.Module):  # tri-plane nerf
     def __init__(self, config, size, num_bone=1, parent_id=None, num_bone_param=None, black_background=False):
-        super(TriNeRFGenerator, self).__init__()
+        super(TriNARFGenerator, self).__init__()
         self.config = config
         self.size = size
         self.num_bone = num_bone
@@ -596,7 +596,7 @@ class TriNeRFGenerator(nn.Module):  # tri-plane nerf
 
         if config.nerf_params.origin_location == "center+head":
             num_bone_param = num_bone
-        self.nerf = TriPlaneNeRF(config.nerf_params, z_dim=[z_dim * 2, z_dim], num_bone=num_bone,
+        self.nerf = TriPlaneNARF(config.nerf_params, z_dim=[z_dim * 2, z_dim], num_bone=num_bone,
                                  bone_length=True,
                                  parent=parent_id, num_bone_param=num_bone_param)
         if not black_background:
@@ -724,7 +724,7 @@ class SSONARFGenerator(nn.Module):
         self.num_bone = num_bone
         self.ray_sampler = mask_based_sampler
 
-        nerf = TriPlaneNeRF if config.use_triplane else SSONARF
+        nerf = TriPlaneNARF if config.use_triplane else SSONARF
 
         self.time_conditional = self.config.nerf_params.time_conditional
         self.pose_conditional = self.config.nerf_params.pose_conditional
