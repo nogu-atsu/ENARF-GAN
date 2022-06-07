@@ -9,7 +9,7 @@ import torchvision
 from torch import nn
 
 from NARF.models.model_utils import whole_image_grid_ray_sampler
-from models.model_utils import mask_based_sampler
+from dependencies.NARF.ray_sampler import mask_based_sampler
 from NARF.models.net import NeRF
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d, Blur
