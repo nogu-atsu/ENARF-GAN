@@ -9,7 +9,7 @@ from torch import nn
 from torch.nn import functional as F
 
 import kornia
-from stylegan2_pytorch.op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
+from dependencies.stylegan2_pytorch.op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
 
 
 class PixelNorm(nn.Module):

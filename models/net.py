@@ -550,14 +550,14 @@ class PretrainedStyleGAN(nn.Module):
         super(PretrainedStyleGAN, self).__init__()
         import sys
         import kornia
-        sys.path.append("stylegan2_pytorch")
-        from stylegan2_pytorch.model import Generator
+        sys.path.append("dependencies/stylegan2_pytorch")
+        from dependencies.stylegan2_pytorch.model import Generator
         size = 256
         latent = 512
         n_mlp = 8
         channel_multiplier = 2
         device = "cuda"
-        ckpt = "stylegan2_pytorch/stylegan2-church-config-f.pt"
+        ckpt = "__stylegan2_pytorch/stylegan2-church-config-f.pt"
         g_ema = Generator(
             size, latent, n_mlp, channel_multiplier=channel_multiplier
         ).to(device)

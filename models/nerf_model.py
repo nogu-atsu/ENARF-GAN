@@ -15,7 +15,7 @@ from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, i
 from models.stylegan import EqualConv1d
 from cuda_extension.triplane_sampler import triplane_sampler
 
-sys.path.append("stylegan2_ada_pytorch")
+sys.path.append("dependencies/stylegan2_ada_pytorch")
 import dnnlib
 
 
