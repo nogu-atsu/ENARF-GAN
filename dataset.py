@@ -105,6 +105,10 @@ class HumanDatasetBase(Dataset):
             return_dict["bone_length"] = bone_length.astype("float32")
             return_dict["intrinsics"] = intrinsics.astype("float32")  # (1, 3, 3)
 
+            # just for compatibility
+            return_dict["pose_to_camera"] = return_dict["pose_3d"]
+            return_dict["pose_to_world"] = return_dict["pose_3d_world"]
+
             if self.return_bone_mask:
                 joint_pos_image = self.cp.pose_to_image_coord(pose_to_camera, intrinsics)
 
