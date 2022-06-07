@@ -15,7 +15,7 @@ from pytorch3d.structures import Meshes
 from torch import nn
 from tqdm import tqdm
 
-from models.nerf_utils import in_cube
+from dependencies.NeRF.utils import in_cube
 from utils.pytorch3d_utils import compute_projection_matrix_from_inv_intrinsics, \
     compute_projection_matrix_from_intrinsics
 
