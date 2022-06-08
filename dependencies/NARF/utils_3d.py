@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 
 
 class CameraProjection:
@@ -111,51 +110,3 @@ def create_mask(hpp, joint_mat_camera, joint_pos_image, size, thickness=1.5):
             pdb.set_trace()
     return (camera_disparity.astype("float32"), mask.astype("float32"),
             part_bone_disparity.astype("float32"), keypoint_mask.astype("float32"))
-
-
-class SE3:
-    @staticmethod
-    def x_div_sin_x(x):
-        eps = 0.05
-        y = torch.where(x.abs() > eps, x / torch.sin(x), 1 + x ** 2 / 6)
-        return y
-
-    @staticmethod
-    def first_coef(x):
-        eps = 0.05
-        y = torch.where(x.abs() > eps, (1 - torch.cos(x)) / x ** 2, 1 / 2 - x ** 2 / 24)
-        return y
-
-    @staticmethod
-    def second_coef(x):
-        eps = 0.05
-        y = torch.where(x.abs() > eps, (x - torch.sin(x)) / x ** 3, 1 / 6 - x ** 2 / 120)
-        return y
-
-    def from_matrix(self, mat):
-        # assuming mat.shape = (..., 4, 4)
-        R = mat[..., :3, :3]  # ... x 3 x 3
-        t = mat[..., :3, 3:]  # ... x 3 x 1
-
-        trace_R = torch.sum(R[..., [0, 1, 2], [0, 1, 2]], dim=-1)
-
-        # avoid nan
-        trace_R = torch.clamp(trace_R, -1, 3)
-
-        theta = torch.acos((trace_R - 1) / 2)[..., None, None]  # ...
-
-        logR = self.x_div_sin_x(theta) / 2 * (R - R.transpose(-1, -2))
-        w = logR[..., [2, 0, 1], [1, 2, 0]]  # vee operator
-
-        V = torch.eye(3, device=mat.device) + self.first_coef(theta) * logR + self.second_coef(
-            theta) * logR ** 2  # ... x 3 x 3
-
-        t_ = torch.matmul(torch.inverse(V), t)
-        return torch.cat([w[..., :, None], t_], dim=-2)  # ... x 6 x 1
-
-
-if __name__ == "__main__":
-    # test se3
-    se3 = SE3()
-    mat = torch.eye(4).repeat(3, 5, 1, 1)  # 3 x 5 x 4 x 4
-    print(se3.from_matrix(mat))
