@@ -12,11 +12,11 @@ import torchvision.models as models
 from torch.utils.data import DataLoader
 
 from utils.train_utils import record_setting, write
+from models.net import NARFNRGenerator, TriNARFGenerator
 from utils.config import yaml_config
 from utils.visualization_utils import save_img
 from dataset import THUmanDataset, HumanDataset
 from models.loss import nerf_patch_loss
-from models.net import NeRFNRGenerator, TriNeRFGenerator
 
 warnings.filterwarnings('ignore')
 
@@ -73,13 +73,13 @@ def create_dataloader(config_dataset):
 
 def prepare_models(gen_config, pose_dataset, size):
     if gen_config.use_triplane:
-        gen = TriNeRFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+        gen = TriNARFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                                num_bone_param=pose_dataset.num_bone_param,
                                parent_id=pose_dataset.parents,
                                black_background=True)
         gen.register_canonical_pose(pose_dataset.canonical_pose)
     else:
-        gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+        gen = NARFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                               num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents)
     enc = models.resnet50(pretrained=True)
     enc.fc = nn.Linear(2048, gen_config.z_dim * 6)
