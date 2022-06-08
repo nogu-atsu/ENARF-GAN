@@ -17,7 +17,7 @@ from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
 from models.net import NeRFNRGenerator, Encoder, PoseDiscriminator
 from models.stylegan import Discriminator
 from utils.mask_utils import create_bone_mask
-from utils.rotation_utils import rotate_pose_randomly
+from dependencies.NARF.pose_utils import rotate_pose_randomly
 from utils.evaluation_utils import pampjpe
 
 

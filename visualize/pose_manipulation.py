@@ -13,7 +13,7 @@ sys.path.append(".")
 from dataset import HumanPoseDataset
 from models.net import TriNARFGenerator
 from utils.config import yaml_config
-from utils.rotation_utils import rotate_pose_by_angle, rotate_mesh_by_angle
+from dependencies.NARF.pose_utils import rotate_pose_by_angle, rotate_mesh_by_angle
 
 warnings.filterwarnings('ignore')
 

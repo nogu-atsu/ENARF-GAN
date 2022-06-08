@@ -14,7 +14,7 @@ from utils.config import yaml_config
 from dataset import THUmanDataset
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
 from models.net import Encoder, PoseDiscriminator
-from utils.rotation_utils import rotate_pose_randomly
+from dependencies.NARF.pose_utils import rotate_pose_randomly
 
 
 def train(train_func, config):
