@@ -15,7 +15,7 @@ from utils.config import yaml_config
 from utils.visualization_utils import save_img
 from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss, loss_dist_func
-from models.net import NeRFNRGenerator, TriNeRFGenerator
+from models.net import NARFNRGenerator, TriNARFGenerator
 from models.stylegan import Discriminator
 
 warnings.filterwarnings('ignore')
@@ -95,12 +95,12 @@ def create_dataloader(config_dataset):
 
 def prepare_models(gen_config, dis_config, pose_dataset, size):
     if gen_config.use_triplane:
-        gen = TriNeRFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+        gen = TriNARFGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                                num_bone_param=pose_dataset.num_bone_param,
                                parent_id=pose_dataset.parents)
         gen.register_canonical_pose(pose_dataset.canonical_pose)
     else:
-        gen = NeRFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
+        gen = NARFNRGenerator(gen_config, size, num_bone=pose_dataset.num_bone,
                               num_bone_param=pose_dataset.num_bone_param, parent_id=pose_dataset.parents)
     dis = Discriminator(dis_config, size=size)
     return gen, dis
