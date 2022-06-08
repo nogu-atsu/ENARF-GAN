@@ -1,15 +1,13 @@
 # modified from https://github.com/rosinality/stylegan2-pytorch/blob/master/model.py
 import math
 import random
+import sys
 from typing import Optional
 
-import numpy as np
+import kornia
 import torch
 from torch import nn
 from torch.nn import functional as F
-
-import kornia
-import sys
 
 sys.path.append("dependencies/stylegan2_pytorch")
 from dependencies.stylegan2_pytorch.op import FusedLeakyReLU, fused_leaky_relu

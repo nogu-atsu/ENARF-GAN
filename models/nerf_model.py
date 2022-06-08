@@ -448,13 +448,11 @@ class StyleNeRF(NeRF):
 
         import mcubes
         from pytorch3d.renderer import (
-            look_at_view_transform,
             FoVPerspectiveCameras,
             PointLights,
             RasterizationSettings,
             MeshRenderer,
             MeshRasterizer,
-            SoftPhongShader,
             HardPhongShader,
             Textures,
         )
