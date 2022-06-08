@@ -12,8 +12,8 @@ from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
 from dependencies.NARF.base import NARFBase
 from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube
+from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
 from models.stylegan import EqualConv1d
-from cuda_extension.triplane_sampler import triplane_sampler
 
 sys.path.append("dependencies/stylegan2_ada_pytorch")
 import dnnlib
@@ -715,50 +715,6 @@ class TriPlaneNARF(NARFBase):
         self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
 
-    def sample_feature(self, tri_plane_features: torch.tensor, position: torch.tensor, reduction: str = "sum",
-                       batch_idx: Optional[torch.Tensor] = None):
-        """sample tri-plane feature at a position
-
-        :param tri_plane_features: (B, ? * 3, h, w)
-        :param position: [-1, 1] in meter, (B, 3, n)
-        :param reduction: "prod" or "sum"
-        :param batch_idx: index of data in minibatch
-
-        :return: feature: (B, 32, n)
-        """
-        batchsize, _, h, w = tri_plane_features.shape
-        assert batchsize == 1 or batch_idx is None
-        _, _, n = position.shape
-        if batchsize == 1 and reduction == "sum":
-            print("called")
-            position_2d = position.permute(0, 2, 1).contiguous()[:, :, None, :]
-            feature = triplane_sampler(tri_plane_features, position_2d)[:, :, :, 0]
-        else:
-            features = tri_plane_features.reshape(batchsize * 3, -1, h, w)
-            # produce 2D coordinate for each tri-plane
-            position_2d = position[:, [0, 1, 1, 2, 2, 0]].reshape(batchsize * 3, 2, n)
-            position_2d = position_2d.permute(0, 2, 1)[:, :, None]  # (B * 3, n, 1, 2)
-
-            # if batch_idx is not None, place tri-planes side by side to form a single tri-plane (quite tricky)
-            if batch_idx is not None:  # transform x coordinate
-                actual_batchsize = w // (h + 1)
-                scale = 1 / (actual_batchsize * (1 + 1 / h))
-                position_2d[:, :, :, 0] = (position_2d[:, :, :, 0] * scale +
-                                           batch_idx[None, :, None] * (2 / actual_batchsize) + (scale - 1))
-
-            feature = F.grid_sample(features, position_2d, align_corners=False)
-            # feature = torch.cudnn_grid_sampler(features, position_2d)
-            feature = feature.reshape(batchsize, 3, -1, n)
-            if reduction == "sum":
-                feature = feature.sum(dim=1)  # (B, feat_dim, n)
-            elif reduction == "prod":
-                if self.config.clamp_mask:
-                    feature = (feature.data.clamp(-2, 5) - feature.data) + feature
-                feature = torch.sigmoid(feature).prod(dim=1)
-            else:
-                raise ValueError()
-        return feature
-
     def sample_weighted_feature_v2(self, tri_plane_features: torch.Tensor, position: torch.Tensor,
                                    weight: torch.Tensor, position_validity: torch.Tensor, padding_value: float = 0):
         # only compute necessary elements
@@ -780,9 +736,8 @@ class TriPlaneNARF(NARFBase):
             valid_positions = torch.gather(position_perm, dim=1,
                                            index=valid_args[None].expand(3, -1))[None]  # (1, 3, num_valid)
             # challenge: this is very heavy
-            value = self.sample_feature(feature_padded, valid_positions,
-                                        batch_idx=valid_args // (n_bone * n))  # (1, 32, num_valid)
-
+            value = sample_feature(feature_padded, valid_positions, clamp_mask=self.config.clamp_mask,
+                                   batch_idx=valid_args // (n_bone * n))  # (1, 32, num_valid)
             # gather weight
             weight = torch.gather(weight.reshape(-1), dim=0, index=valid_args)
 
@@ -801,6 +756,14 @@ class TriPlaneNARF(NARFBase):
 
     def calc_weight(self, tri_plane_weights: torch.Tensor, position: torch.Tensor, position_validity: torch.Tensor,
                     mode="prod"):
+        """
+        return part prob. MLP/triplane/constant
+        :param tri_plane_weights:
+        :param position:
+        :param position_validity:
+        :param mode:
+        :return:
+        """
         bs, n_bone, _, n = position.shape
         if self.no_selector:
             weight = torch.ones(bs, n_bone, n, device=position.device) / n_bone
@@ -811,23 +774,8 @@ class TriPlaneNARF(NARFBase):
             h = self.selector(encoded_p)
             weight = torch.softmax(h, dim=1)  # (B, n_bone, n)
         else:  # tri-plane based
-            position = position.reshape(bs * n_bone, 3, n)
-
-            # default mode is prod
-            if mode == "prod":
-                # sample prob from tri-planes and compute product
-                weight = self.sample_feature(tri_plane_weights, position, reduction="prod")  # (B * n_bone, 1, n)
-                weight = weight.reshape(bs, n_bone, n)
-            elif mode == "sum":  # sum and softmax
-                weight = self.sample_feature(tri_plane_weights, position)  # (B * n_bone, 1, n)
-                weight = weight.reshape(bs, n_bone, n)
-
-                # # wight for invalid point is 0
-                weight = weight - ~position_validity * 1e4
-                weight = torch.softmax(weight, dim=1)
-
-            else:
-                weight = torch.ones(bs, n_bone, n, device=position.device) / n_bone
+            weight = sample_triplane_part_prob(tri_plane_weights, position, position_validity, mode=mode,
+                                               clamp_mask=self.config.clamp_mask)
 
         return weight
 
@@ -930,16 +878,17 @@ class TriPlaneNARF(NARFBase):
         # default mode is "weight_feature"
         # weighted sum of tri-plane features
         if mode == "weight_feature":
-            feature = self.sample_weighted_feature_v2(tri_plane_feature[:, :32 * 3], masked_position,
-                                                      weight,
-                                                      position_validity)  # (B, 32, n)
+            feature = sample_weighted_feature_v2(self.feat_dim, tri_plane_feature[:, :32 * 3], masked_position,
+                                                 weight, position_validity,
+                                                 clamp_mask=self.config.clamp_mask)  # (B, 32, n)
         # canonical position based
         elif mode == "weight_position":
             weighted_position_validity = position_validity.any(dim=1)[:, None]
             weighted_position = (p * weight[:, :, None]).sum(dim=1)  # (bs, 3, n)
             # Make the invalid position outside the range of -1 to 1 (all invalid positions become 2)
             weighted_position = weighted_position * weighted_position_validity + 2 * ~weighted_position_validity
-            feature = self.sample_feature(tri_plane_feature[:, :32 * 3], weighted_position)  # (B, 32, n)
+            feature = sample_feature(tri_plane_feature[:, :32 * 3], weighted_position,
+                                     clamp_mask=self.config.clamp_mask, )  # (B, 32, n)
         else:
             raise ValueError()
 
@@ -965,6 +914,13 @@ class TriPlaneNARF(NARFBase):
         return density, color
 
     def compute_tri_plane_feature(self, z, bone_length, truncation_psi=1):
+        """
+        Generate triplane features with stylegan
+        :param z:
+        :param bone_length:
+        :param truncation_psi:
+        :return:
+        """
         # generate tri-plane feature conditioned on z and bone_length
         encoded_length = encode(bone_length, self.num_frequency_for_other, num_bone=self.num_bone_param)
         tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0],
