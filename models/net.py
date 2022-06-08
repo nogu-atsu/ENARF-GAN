@@ -8,10 +8,8 @@ import torchvision
 from pytorch3d.transforms.rotation_conversions import rotation_6d_to_matrix
 from torch import nn
 
-from NARF.models.model_utils import whole_image_grid_ray_sampler
-from NARF.models.net import NeRF
-from dependencies.NARF.ray_sampler import mask_based_sampler
-from dependencies.stylenerf.net import StyleNeRF
+from dependencies.NARF.ray_sampler import mask_based_sampler, whole_image_grid_ray_sampler
+from dependencies.stylenerf.net import StyleNeRF, NeRF
 from models.nerf_model import TriPlaneNARF, SSONARF
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d

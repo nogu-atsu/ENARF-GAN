@@ -38,3 +38,30 @@ def mask_based_sampler(mask: torch.Tensor, ray_batchsize: int
     homo_img = homo_img.reshape(batchsize, 1, 3, -1)
     return ray_idx, homo_img
 
+
+def whole_image_grid_ray_sampler(render_size: int, patch_size: int, batchsize: int
+                                 ) -> Tuple[torch.tensor, torch.tensor]:
+    """sample rays from entire image
+
+    Args:
+        render_size:
+        patch_size:
+        batchsize:
+
+    Returns:
+        grid: normalized coordinates used for torch.nn.functional.grid_sample, (B, patch_size, patch_size, 2)
+        homo_img: homogeneous image coordinate, (B, 1, 3, patch_size ** 2)
+
+    """
+    y, x = torch.meshgrid([torch.arange(patch_size, device="cuda"),
+                           torch.arange(patch_size, device="cuda")])
+    rays = torch.stack([x, y], dim=2)[None]
+    rays = render_size * (rays + 0.5) / patch_size
+    rays = rays.repeat(batchsize, 1, 1, 1)  # B x patch_size x patch_size x 2
+
+    grid = rays / (render_size / 2) - 1  # [-1, 1]
+
+    rays = rays.reshape(batchsize, -1, 2).permute(0, 2, 1)
+    homo_img = torch.cat([rays, torch.ones(batchsize, 1, patch_size ** 2, device="cuda")], dim=1)  # B x 3 x n
+    homo_img = homo_img.reshape(batchsize, 1, 3, -1)
+    return grid, homo_img
