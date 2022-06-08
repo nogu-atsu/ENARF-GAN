@@ -11,7 +11,8 @@ from torch import nn
 from NARF.models.model_utils import whole_image_grid_ray_sampler
 from NARF.models.net import NeRF
 from dependencies.NARF.ray_sampler import mask_based_sampler
-from models.nerf_model import StyleNeRF, TriPlaneNARF, SSONARF
+from dependencies.stylenerf.net import StyleNeRF
+from models.nerf_model import TriPlaneNARF, SSONARF
 from models.stylegan import Generator as StyleGANGenerator
 from models.stylegan import StyledConv, ModulatedConv2d
 
