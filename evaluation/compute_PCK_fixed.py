@@ -20,7 +20,7 @@ except (ImportError, ModuleNotFoundError):
     has_mmdet = False
 
 sys.path.append(".")
-from utils.config import yaml_config
+from dependencies.config import yaml_config
 from dataset import THUmanPoseDataset, HumanPoseDataset
 from models.net import NARFNRGenerator, TriNARFGenerator
 

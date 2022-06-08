@@ -14,11 +14,11 @@ from dependencies.NARF.pose_utils import rotate_pose_randomly
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
 from models.net import NeRFNRGenerator, Encoder, PoseDiscriminator
 from models.stylegan import Discriminator
-from utils.config import yaml_config
-from utils.evaluation_utils import pampjpe
-from utils.mask_utils import create_bone_mask
-from utils.train_utils import record_setting, write
-from utils.visualization_utils import save_img
+from dependencies.config import yaml_config
+from dependencies.evaluation_utils import pampjpe
+from dependencies.mask_utils import create_bone_mask
+from dependencies.train_utils import record_setting, write
+from dependencies.visualization_utils import save_img
 
 
 def train(train_func, config, disable_checkpoint):

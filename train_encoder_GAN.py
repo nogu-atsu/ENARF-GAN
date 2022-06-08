@@ -13,8 +13,8 @@ from dataset import THUmanDataset
 from dependencies.NARF.pose_utils import rotate_pose_randomly
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
 from models.net import Encoder, PoseDiscriminator
-from utils.config import yaml_config
-from utils.train_utils import record_setting, write
+from dependencies.config import yaml_config
+from dependencies.train_utils import record_setting, write
 
 
 def train(train_func, config):

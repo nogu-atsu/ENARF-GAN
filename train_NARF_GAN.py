@@ -14,9 +14,9 @@ from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDat
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss, loss_dist_func
 from models.net import NARFNRGenerator, TriNARFGenerator
 from models.stylegan import Discriminator
-from utils.config import yaml_config
-from utils.train_utils import record_setting, write
-from utils.visualization_utils import save_img
+from dependencies.config import yaml_config
+from dependencies.train_utils import record_setting, write
+from dependencies.visualization_utils import save_img
 
 warnings.filterwarnings('ignore')
 

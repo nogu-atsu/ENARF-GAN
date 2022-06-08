@@ -17,10 +17,10 @@ from NARF.models.loss import SparseLoss
 from dataset import SSODataset
 from models.loss import loss_dist_func
 from models.net import SSONARFGenerator
-from utils.config import yaml_config
-from utils.train_utils import all_reduce
-from utils.train_utils import write
-from utils.visualization_utils import ssim, psnr, lpips
+from dependencies.config import yaml_config
+from dependencies.train_utils import all_reduce
+from dependencies.train_utils import write
+from dependencies.visualization_utils import ssim, psnr, lpips
 
 warnings.filterwarnings('ignore')
 

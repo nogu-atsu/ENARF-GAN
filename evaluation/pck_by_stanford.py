@@ -14,7 +14,7 @@ from tqdm.autonotebook import tqdm
 
 sys.path.append(".")
 from evaluation.compute_PCK_fixed import GenIterator
-from utils.config import yaml_config
+from dependencies.config import yaml_config
 from dataset import HumanDataset
 from models.net import NARFNRGenerator, TriNARFGenerator
 

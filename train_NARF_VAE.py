@@ -13,9 +13,9 @@ from torch.utils.data import DataLoader
 
 from dataset import THUmanDataset, HumanDataset
 from models.net import NARFNRGenerator, TriNARFGenerator
-from utils.config import yaml_config
-from utils.train_utils import record_setting, write
-from utils.visualization_utils import save_img
+from dependencies.config import yaml_config
+from dependencies.train_utils import record_setting, write
+from dependencies.visualization_utils import save_img
 
 warnings.filterwarnings('ignore')
 

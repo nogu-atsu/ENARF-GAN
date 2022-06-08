@@ -17,7 +17,7 @@ from torch import nn
 from tqdm import tqdm
 
 from dependencies.NeRF.utils import in_cube
-from utils.pytorch3d_utils import compute_projection_matrix_from_inv_intrinsics, \
+from dependencies.pytorch3d_utils import compute_projection_matrix_from_inv_intrinsics, \
     compute_projection_matrix_from_intrinsics
 
 
@@ -778,7 +778,7 @@ class NARFBase(nn.Module):
         assert bone_length is None or bone_length.shape[0] == 1
         ray_batchsize = self.config.render_bs
 
-        from utils.memory_reporter import get_gpu_properties
+        from dependencies.memory_reporter import get_gpu_properties
 
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
