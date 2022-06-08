@@ -1,10 +1,10 @@
+from copy import deepcopy
 from typing import Tuple
 
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
-from copy import deepcopy
 
 
 def rotation_matrix(theta: torch.tensor):

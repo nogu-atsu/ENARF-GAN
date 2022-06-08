@@ -10,13 +10,13 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from utils.train_utils import record_setting, write
-from utils.config import yaml_config
-from utils.visualization_utils import save_img
 from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss, loss_dist_func
 from models.net import NARFNRGenerator, TriNARFGenerator
 from models.stylegan import Discriminator
+from utils.config import yaml_config
+from utils.train_utils import record_setting, write
+from utils.visualization_utils import save_img
 
 warnings.filterwarnings('ignore')
 

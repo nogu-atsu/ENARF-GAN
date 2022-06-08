@@ -9,11 +9,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from utils.train_utils import record_setting, write
-from utils.config import yaml_config
 from dataset import THUmanDataset
 from models.net import Encoder
+from utils.config import yaml_config
 from utils.evaluation_utils import pampjpe
+from utils.train_utils import record_setting, write
 
 
 def train(train_func, config):
