@@ -1,8 +1,9 @@
 from typing import Optional
 
-from cuda_extension.triplane_sampler import triplane_sampler
 import torch
 import torch.nn.functional as F
+
+from cuda_extension.triplane_sampler import triplane_sampler
 
 
 def sample_feature(tri_plane_features: torch.tensor, position: torch.tensor, reduction: str = "sum", clamp_mask=False,

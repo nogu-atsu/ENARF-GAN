@@ -1,6 +1,5 @@
 from typing import Optional
 
-import cv2
 import numpy as np
 import torch
 from smplx.lbs import (blend_shapes, vertices2joints, batch_rodrigues, batch_rigid_transform)
@@ -141,63 +140,3 @@ def move_to_origin(bone_pose, scale=0.5):
 def axis_transformation(bone_pose: np.ndarray, axis_transformation: np.ndarray = np.array([1, -1, -1])):
     bone_pose[:, :3] *= axis_transformation[None, :, None]
     return bone_pose
-
-
-# def rotate_pose_in_place(pose, x_r, y_r, z_r):
-#     """rotates model (x-axis first, then y-axis, and then z-axis)"""
-#     mat_x, _ = cv2.Rodrigues(np.asarray([x_r, 0, 0], dtype=np.float32))
-#     mat_y, _ = cv2.Rodrigues(np.asarray([0, y_r, 0], dtype=np.float32))
-#     mat_z, _ = cv2.Rodrigues(np.asarray([0, 0, z_r], dtype=np.float32))
-#     mat = np.matmul(np.matmul(mat_x, mat_y), mat_z)
-#     T = np.eye(4)
-#     T[:3, :3] = mat
-#
-#     pose = np.matmul(T, pose)
-#
-#     return pose
-#
-#
-# def transform_model_randomly(bone_pose):
-#     """translates the model to the origin, and rotates it randomly"""
-#     # random rotation
-#     y_rot = np.random.uniform(-np.pi, np.pi)
-#     x_rot = np.random.uniform(-0.3, 0.3)
-#     z_rot = np.random.uniform(-0.3, 0.3)
-#     # random scale
-#     scale = np.random.uniform(1.0, 1.5)
-#     # # mul(mat, mesh.v)
-#     bone_pose = rotate_pose_in_place(bone_pose, x_rot, y_rot, z_rot)
-#
-#     bone_pose = bone_pose * scale
-#
-#     # create a dict of transformation parameters
-#     param = dict()
-#     param['scale'] = scale
-#     param['rot'] = np.array([x_rot, y_rot, z_rot])
-#     return bone_pose, param
-#
-#
-# def sample_camera_mat(cam_t=None, theta=None, phi=None, angle=None, deterministic=False):
-#     if deterministic:
-#         if cam_t is None:
-#             cam_t = np.array((0, 0, 2.0))
-#
-#             theta = 0
-#             phi = 0
-#             angle = 0
-#         cam_r = np.array([np.sin(theta) * np.cos(phi), np.cos(theta), np.sin(theta) * np.sin(phi)])
-#         cam_r = cam_r * angle
-#     else:
-#         if cam_t is None:
-#             cam_t = np.array((0, 0, 2.0))
-#
-#             theta = np.random.uniform(0, 0.3)
-#             phi = np.random.uniform(0, 2 * np.pi)
-#             angle = np.random.uniform(0, 2 * np.pi)
-#         cam_r = np.array([np.sin(theta) * np.cos(phi), np.cos(theta), np.sin(theta) * np.sin(phi)])
-#         cam_r = cam_r * angle
-#
-#     R = cv2.Rodrigues(cam_r)[0]
-#     T = np.vstack((np.hstack((R, cam_t.reshape(3, 1))), np.zeros((1, 4))))  # 4 x 4
-#
-#     return T

@@ -716,8 +716,8 @@ class NARFBase(nn.Module):
         assert bone_length is None or bone_length.shape[0] == 1
 
         meshes = self.create_mesh(pose_to_camera, z, z_rend, bone_length,
-                                                           voxel_size=voxel_size,
-                                                           mesh_th=mesh_th, truncation_psi=truncation_psi)
+                                  voxel_size=voxel_size,
+                                  mesh_th=mesh_th, truncation_psi=truncation_psi)
 
         images = self.render_mesh_(meshes, intrinsics, img_size)
 

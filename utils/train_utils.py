@@ -1,11 +1,8 @@
-import argparse
 import os
 import subprocess
 import sys
 
 import torch
-import yaml
-from easydict import EasyDict as edict
 
 
 def record_setting(out):
