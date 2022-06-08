@@ -650,7 +650,7 @@ class Discriminator(nn.Module):
                 group, -1, self.stddev_feat, channel // self.stddev_feat, height, width
             )
             stddev = torch.sqrt(stddev.var(0, unbiased=False) + 1e-8)
-            stddev = stddev.mean([2, 3, 4], keepdims=True).squeeze(2)
+            stddev = stddev.mean([2, 3, 4], keepdim=True).squeeze(2)
             if ddp:
                 torch.distributed.all_reduce(stddev)
                 stddev /= world_size
