@@ -9,10 +9,10 @@ from pytorch3d.transforms.rotation_conversions import rotation_6d_to_matrix
 from torch import nn
 
 from dependencies.NARF.ray_sampler import mask_based_sampler, whole_image_grid_ray_sampler
+from dependencies.custom_stylegan2.net import Generator as StyleGANGenerator
+from dependencies.custom_stylegan2.net import StyledConv, ModulatedConv2d
 from dependencies.stylenerf.net import StyleNeRF, NeRF
 from models.nerf_model import TriPlaneNARF, SSONARF
-from models.stylegan import Generator as StyleGANGenerator
-from models.stylegan import StyledConv, ModulatedConv2d
 
 
 class NeuralRenderer(nn.Module):
