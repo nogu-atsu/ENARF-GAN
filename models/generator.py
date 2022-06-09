@@ -263,14 +263,6 @@ class TriNARFGenerator(nn.Module):  # tri-plane nerf
                                                               n_mlp=4, last_channel=3,
                                                               crop_background=crop_background)
 
-    # def init_bg(self):
-    #     config = self.config
-    #     self.background_generator = StyleGANGenerator(size=self.size, style_dim=config.z_dim,
-    #                                                   n_mlp=4, last_channel=3,
-    #                                                   crop_background=config.crop_background)
-    #     self.background_generator.cuda()
-    #     self.nerf.requires_grad_(False)
-
     def register_canonical_pose(self, pose: np.ndarray):
         self.nerf.register_canonical_pose(pose)
 
