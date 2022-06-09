@@ -11,10 +11,10 @@ from tqdm import tqdm
 
 from dataset import THUmanDataset
 from dependencies.NARF.pose_utils import rotate_pose_randomly
-from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
-from models.net import Encoder, PoseDiscriminator
 from dependencies.config import yaml_config
+from dependencies.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
 from dependencies.train_utils import record_setting, write
+from models.net import Encoder, PoseDiscriminator
 
 
 def train(train_func, config):

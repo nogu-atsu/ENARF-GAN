@@ -11,14 +11,15 @@ from tqdm import tqdm
 
 from dataset import THUmanDataset, HumanDataset
 from dependencies.NARF.pose_utils import rotate_pose_randomly
-from models.loss import adv_loss_dis, adv_loss_gen, d_r1_loss, nerf_patch_loss
-from models.net import NeRFNRGenerator, Encoder, PoseDiscriminator
-from dependencies.custom_stylegan2.net import Discriminator
 from dependencies.config import yaml_config
+from dependencies.custom_stylegan2.net import Discriminator
 from dependencies.evaluation_utils import pampjpe
+from dependencies.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
 from dependencies.mask_utils import create_bone_mask
 from dependencies.train_utils import record_setting, write
 from dependencies.visualization_utils import save_img
+from models.loss import nerf_patch_loss
+from models.net import NeRFNRGenerator, Encoder, PoseDiscriminator
 
 
 def train(train_func, config, disable_checkpoint):
