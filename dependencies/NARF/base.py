@@ -32,39 +32,6 @@ class NARFBase(nn.Module):
     def flops(self):
         raise NotImplementedError()
 
-    # def register_canonical_pose(self, pose: np.ndarray) -> None:
-    #     """ register canonical pose.
-    #
-    #     Args:
-    #         pose: array of (24, 4, 4)
-    #
-    #     Returns:
-    #
-    #     """
-    #     assert self.origin_location in ["center", "center_fixed", "center+head"]
-    #     coordinate = pose[:, :3, 3]
-    #     length = np.linalg.norm(coordinate[1:] - coordinate[self.parent_id[1:]], axis=1)  # (23, )
-    #
-    #     if self.origin_location == "center":
-    #         # move origins to parts' center (self.origin_location == "center)
-    #         pose = np.concatenate([pose[1:, :, :3],
-    #                                (pose[1:, :, 3:] +
-    #                                 pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
-    #     elif self.origin_location == "center_fixed":
-    #         pose = np.concatenate([pose[self.parent_id[1:], :, :3],
-    #                                (pose[1:, :, 3:] +
-    #                                 pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
-    #     elif self.origin_location == "center+head":
-    #         length = np.concatenate([length, np.ones(1,)])  # (24,)
-    #         head_id = 15
-    #         _pose = np.concatenate([pose[self.parent_id[1:], :, :3],
-    #                                 (pose[1:, :, 3:] +
-    #                                  pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
-    #         pose = np.concatenate([_pose, pose[head_id][None]])  # (24, 4, 4)
-    #
-    #     self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
-    #     self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
-
     def calc_color_and_density(self, local_pos: torch.Tensor, canonical_pos: torch.Tensor,
                                tri_plane_feature: torch.Tensor,
                                z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str,
