@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from dependencies.NARF.mesh_rendering import create_mesh
 from dependencies.NARF.ray_sampler import mask_based_sampler, whole_image_grid_ray_sampler
 from dependencies.custom_stylegan2.net import Generator as StyleGANGenerator
 from dependencies.custom_stylegan2.net import StyledConv, ModulatedConv2d, PretrainedStyleGAN
@@ -367,8 +368,8 @@ class TriNARFGenerator(nn.Module):  # tri-plane nerf
         else:
             z_dim = z.shape[1] // 3
             z_for_nerf, z_for_neural_render = torch.split(z, [z_dim * 2, z_dim], dim=1)
-        return self.nerf.create_mesh(pose_to_camera, z_for_nerf, z_for_neural_render, bone_length,
-                                     voxel_size, mesh_th, truncation_psi)
+        return create_mesh(self.nerf, pose_to_camera, z_for_nerf, z_for_neural_render, bone_length,
+                           voxel_size, mesh_th, truncation_psi)
 
 
 class SSONARFGenerator(nn.Module):

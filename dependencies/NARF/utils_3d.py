@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 
 class CameraProjection:
@@ -110,3 +111,16 @@ def create_mask(hpp, joint_mat_camera, joint_pos_image, size, thickness=1.5):
             pdb.set_trace()
     return (camera_disparity.astype("float32"), mask.astype("float32"),
             part_bone_disparity.astype("float32"), keypoint_mask.astype("float32"))
+
+
+def create_unit_cube_mesh(device: torch.device):
+    verts = torch.tensor([[1, 1, 1], [1, -1, 1], [-1, -1, 1], [-1, 1, 1],
+                          [1, 1, -1], [1, -1, -1], [-1, -1, -1], [-1, 1, -1]], device=device, dtype=torch.float32)
+    verts = verts.permute(1, 0)
+    faces = torch.tensor([[0, 2, 1], [0, 2, 3],
+                          [0, 1, 5], [0, 5, 4],
+                          [1, 2, 6], [1, 6, 5],
+                          [2, 3, 7], [2, 7, 6],
+                          [3, 0, 7], [0, 7, 4],
+                          [4, 5, 6], [4, 6, 7]], device=device)
+    return verts, faces

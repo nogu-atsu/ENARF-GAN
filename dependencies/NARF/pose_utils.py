@@ -124,3 +124,25 @@ def rotate_mesh_by_angle(pose_3d: torch.Tensor, meshes: Tuple[torch.Tensor, torc
     rotated_vertices = rotated_vertices.permute(1, 0)
     meshes = (rotated_vertices,) + meshes[1:]
     return meshes
+
+
+def transform_pose(pose_to_camera, bone_length, origin_location, parent_id):
+    if origin_location == "center":
+        pose_to_camera = torch.cat([pose_to_camera[:, 1:, :, :3],
+                                    (pose_to_camera[:, 1:, :, 3:] +
+                                     pose_to_camera[:, parent_id[1:], :, 3:]) / 2], dim=-1)
+    elif origin_location == "center_fixed":
+        pose_to_camera = torch.cat([pose_to_camera[:, parent_id[1:], :, :3],
+                                    (pose_to_camera[:, 1:, :, 3:] +
+                                     pose_to_camera[:, parent_id[1:], :, 3:]) / 2], dim=-1)
+
+    elif origin_location == "center+head":
+        bone_length = torch.cat([bone_length, torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
+                                dim=1)  # (B, 24)
+        head_id = 15
+        _pose_to_camera = torch.cat([pose_to_camera[:, parent_id[1:], :, :3],
+                                     (pose_to_camera[:, 1:, :, 3:] +
+                                      pose_to_camera[:, parent_id[1:], :, 3:]) / 2],
+                                    dim=-1)  # (B, 23, 4, 4)
+        pose_to_camera = torch.cat([_pose_to_camera, pose_to_camera[:, head_id][:, None]], dim=1)  # (B, 24, 4, 4)
+    return pose_to_camera, bone_length

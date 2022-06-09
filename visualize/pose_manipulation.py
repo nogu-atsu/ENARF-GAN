@@ -14,8 +14,10 @@ from dataset import HumanPoseDataset
 from models.generator import TriNARFGenerator
 from dependencies.config import yaml_config
 from dependencies.NARF.pose_utils import rotate_pose_by_angle, rotate_mesh_by_angle
+from dependencies.NARF.mesh_rendering import render_mesh_
 
 warnings.filterwarnings('ignore')
+
 
 def render_img_and_mesh(gen, seed, z, l, j, w, intri, inv_intri, meshes):
     with torch.no_grad():
@@ -23,7 +25,7 @@ def render_img_and_mesh(gen, seed, z, l, j, w, intri, inv_intri, meshes):
         fake_img, fake_low_res_mask, _, _ = gen(j, w, l, z=z, inv_intrinsics=inv_intri,
                                                 truncation_psi=truncation_psi,
                                                 black_bg_if_possible=whiten_bg)
-        mesh_img = gen.nerf.render_mesh_(meshes, intri, gen.size, render_size)
+        mesh_img = render_mesh_(meshes, intri, gen.size, render_size)
 
     if whiten_bg:
         fake_img = fake_img + 2 * (1 - fake_low_res_mask)
