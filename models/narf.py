@@ -8,8 +8,8 @@ from torch import nn
 
 from dependencies.NARF.activation import MyReLU
 from dependencies.NARF.base import NARFBase
-from dependencies.NeRF.net import StyledMLP, MLP
-from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube
+from dependencies.NeRF_net.net import StyledMLP, MLP
+from dependencies.NeRF_net.utils import StyledConv1d, encode, positional_encoding, in_cube
 from dependencies.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
 

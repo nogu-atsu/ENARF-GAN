@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 from torch import nn
 
-from dependencies.NeRF.utils import StyledConv1d
+from dependencies.NeRF_net.utils import StyledConv1d
 from dependencies.custom_stylegan2.net import EqualConv1d
 
 

@@ -7,8 +7,8 @@ from tqdm import tqdm
 
 from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
-from dependencies.NeRF.net import StyledMLP
-from dependencies.NeRF.utils import StyledConv1d, encode
+from dependencies.NeRF_net.net import StyledMLP
+from dependencies.NeRF_net.utils import StyledConv1d, encode
 from dependencies.custom_stylegan2.net import EqualConv1d
 
 
