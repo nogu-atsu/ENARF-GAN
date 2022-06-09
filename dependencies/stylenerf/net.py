@@ -9,7 +9,7 @@ from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
 from dependencies.NeRF.net import StyledMLP
 from dependencies.NeRF.utils import StyledConv1d, encode
-from models.stylegan import EqualConv1d
+from dependencies.custom_stylegan2.net import EqualConv1d
 
 
 class StyleNeRF(NeRF):
