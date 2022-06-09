@@ -15,7 +15,7 @@ from dataset import THUmanDataset, HumanDataset
 from dependencies.config import yaml_config
 from dependencies.train_utils import record_setting, write
 from dependencies.visualization_utils import save_img
-from models.net import NARFNRGenerator, TriNARFGenerator
+from models.generator import NARFNRGenerator, TriNARFGenerator
 
 warnings.filterwarnings('ignore')
 

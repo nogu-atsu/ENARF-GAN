@@ -20,7 +20,7 @@ from dependencies.train_utils import all_reduce
 from dependencies.train_utils import write
 from dependencies.visualization_utils import ssim, psnr, lpips
 from models.loss import loss_dist_func
-from models.net import SSONARFGenerator
+from models.generator import SSONARFGenerator
 
 warnings.filterwarnings('ignore')
 

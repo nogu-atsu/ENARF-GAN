@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import THUmanDataset
-from models.net import Encoder
+from models.misc import Encoder
 from dependencies.config import yaml_config
 from dependencies.evaluation_utils import pampjpe
 from dependencies.train_utils import record_setting, write

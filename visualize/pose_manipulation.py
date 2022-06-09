@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 sys.path.append(".")
 from dataset import HumanPoseDataset
-from models.net import TriNARFGenerator
+from models.generator import TriNARFGenerator
 from dependencies.config import yaml_config
 from dependencies.NARF.pose_utils import rotate_pose_by_angle, rotate_mesh_by_angle
 

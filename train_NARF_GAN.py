@@ -17,7 +17,7 @@ from dependencies.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
 from dependencies.train_utils import record_setting, write
 from dependencies.visualization_utils import save_img
 from models.loss import nerf_patch_loss, loss_dist_func
-from models.net import NARFNRGenerator, TriNARFGenerator
+from models.generator import NARFNRGenerator, TriNARFGenerator
 
 warnings.filterwarnings('ignore')
 

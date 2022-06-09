@@ -22,7 +22,7 @@ except (ImportError, ModuleNotFoundError):
 sys.path.append(".")
 from dependencies.config import yaml_config
 from dataset import THUmanPoseDataset, HumanPoseDataset
-from models.net import NARFNRGenerator, TriNARFGenerator
+from models.generator import NARFNRGenerator, TriNARFGenerator
 
 warnings.filterwarnings('ignore')
 

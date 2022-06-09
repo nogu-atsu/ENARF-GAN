@@ -8,7 +8,7 @@ import sys
 sys.path.append(".")
 import time
 from dataset import SSODataset
-from models.net import SSONARFGenerator
+from models.generator import SSONARFGenerator
 import torch
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt

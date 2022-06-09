@@ -18,8 +18,9 @@ from dependencies.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
 from dependencies.mask_utils import create_bone_mask
 from dependencies.train_utils import record_setting, write
 from dependencies.visualization_utils import save_img
+from models.generator import NARFNRGenerator
 from models.loss import nerf_patch_loss
-from models.net import NeRFNRGenerator, Encoder, PoseDiscriminator
+from models.misc import Encoder, PoseDiscriminator
 
 
 def train(train_func, config, disable_checkpoint):
@@ -70,7 +71,7 @@ def create_dataloader(config_dataset):
 
 def prepare_models(enc_config, gen_config, dis_config, img_dataset, size):
     enc = Encoder(enc_config, img_dataset.parents)
-    gen = NeRFNRGenerator(gen_config, size, num_bone=img_dataset.num_bone,
+    gen = NARFNRGenerator(gen_config, size, num_bone=img_dataset.num_bone,
                           num_bone_param=img_dataset.num_bone_param)
     dis = Discriminator(dis_config, size=size)
     pdis = PoseDiscriminator(num_bone=img_dataset.num_bone)
