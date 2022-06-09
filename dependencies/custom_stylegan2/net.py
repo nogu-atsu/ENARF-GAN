@@ -2,7 +2,7 @@
 import math
 import random
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
 import kornia
 import torch
@@ -11,7 +11,7 @@ from torch.nn import functional as F
 
 sys.path.append("dependencies/stylegan2_pytorch")
 from dependencies.stylegan2_pytorch.op import FusedLeakyReLU, fused_leaky_relu
-from dependencies.stylegan2_pytorch.model import PixelNorm, Upsample, Blur, ModulatedConv2d, NoiseInjection
+from dependencies.stylegan2_pytorch.model import PixelNorm, Upsample, Blur, ModulatedConv2d, NoiseInjection, Generator
 
 
 class EqualConv2d(nn.Module):
@@ -661,3 +661,36 @@ class Discriminator(nn.Module):
         out = self.final_linear(out)
 
         return out
+
+
+class PretrainedStyleGAN(nn.Module):
+    def __init__(self):
+        super(PretrainedStyleGAN, self).__init__()
+        import kornia
+        size = 256
+        latent = 512
+        n_mlp = 8
+        channel_multiplier = 2
+        device = "cuda"
+        ckpt = "__stylegan2_pytorch/stylegan2-church-config-f.pt"
+        g_ema = Generator(
+            size, latent, n_mlp, channel_multiplier=channel_multiplier
+        ).to(device)
+        checkpoint = torch.load(ckpt)
+
+        g_ema.load_state_dict(checkpoint["g_ema"])
+        g_ema.input.input = nn.Parameter(g_ema.input.input[:, :, 1:-1].data)
+
+        self.size = 128
+        self.gen = g_ema
+        self.cropper = kornia.augmentation.RandomCrop((self.size, self.size), resample='NEAREST')
+        self.n_latent = g_ema.n_latent
+
+    def forward(self, z: Tuple[torch.Tensor, torch.Tensor], inject_index):
+        z = torch.cat(z, dim=1)
+        sample, _ = self.gen([z], inject_index=inject_index)
+        if self.training:
+            sample = self.cropper(sample)
+        else:
+            sample = sample[:, :, :, self.size // 2: self.size * 3 // 2]
+        return sample, None
