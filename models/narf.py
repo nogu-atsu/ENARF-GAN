@@ -6,7 +6,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from dependencies.NARF.activation import MyReLU
 from dependencies.NARF.base import NARFBase
 from dependencies.NeRF_net.net import StyledMLP, MLP
 from dependencies.NeRF_net.utils import StyledConv1d, encode, positional_encoding, in_cube
@@ -17,66 +16,22 @@ sys.path.append("dependencies/stylegan2_ada_pytorch")
 import dnnlib
 
 
+# TODO move shared variables to NARFBase
+
 class TriPlaneNARF(NARFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=True, parent=None, num_bone_param=None, view_dependent: bool = False):
-        super(TriPlaneNARF, self).__init__()
         assert bone_length
-        assert num_bone_param is not None
-        assert hasattr(config, "origin_location")
-
         self.tri_plane_based = True
-        self.config = config
-        hidden_size = config.hidden_size
-        # use_world_pose = not config.no_world_pose
-        # use_ray_direction = not config.no_ray_direction
-        # self.final_activation = config.final_activation
-        self.origin_location = config.origin_location
-        self.coordinate_scale = config.coordinate_scale
-        # self.mip_nerf_resolution = config.mip_nerf_resolution
-        # self.mip_nerf = config.mip_nerf
-        # assert self.final_activation in ["tanh", "l2", None]
-        assert self.origin_location in ["center", "center_fixed", "center+head"]
-        assert parent is not None
-        # assert (self.mip_nerf_resolution is not None) == self.config.mip_nerf
-
-        # self.out_dim = config.out_dim if "out_dim" in self.config else 3
-        self.parent_id = parent
-        self.use_bone_length = bone_length
-
-        # self.mask_input = self.config.concat and self.config.mask_input
-        # self.selector_activation = self.config.selector_activation
-        # selector_tmp = self.config.selector_adaptive_tmp.start
-        # self.register_buffer("selector_tmp", torch.tensor(selector_tmp).float())
-
-        self.density_activation = MyReLU.apply
-
-        # self.density_scale = config.density_scale
-
-        # parameters for position encoding
-        nffp = self.config.num_frequency_for_position if "num_frequency_for_position" in self.config else 10
-        nffo = self.config.num_frequency_for_other if "num_frequency_for_other" in self.config else 4
-        self.num_frequency_for_position = nffp
-        self.num_frequency_for_other = nffo
-
-        self.hidden_size = hidden_size
-        self.num_bone = num_bone - 1 if self.origin_location in ["center", "center_fixed"] else num_bone
-        self.num_bone_param = num_bone_param if num_bone_param is not None else num_bone
-        assert self.num_bone == self.num_bone_param
-        if type(z_dim) == list:
-            self.z_dim = z_dim[0]
-            self.z2_dim = z_dim[1]
-        else:
-            self.z_dim = z_dim
-            self.z2_dim = z_dim
         self.w_dim = 512
         self.feat_dim = 32
+        self.no_selector = config.no_selector
+        super(TriPlaneNARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
 
         # self.fc_bone_length = torch.jit.script(
         #     StyledConv1d(self.num_frequency_for_other * 2 * self.num_bone_param,
         #                  self.z_dim, self.z_dim))
 
-        self.no_selector = self.config.no_selector
         if self.config.constant_triplane:
             self.tri_plane = nn.Parameter(torch.zeros(1, 32 * 3 + self.num_bone * 3, 256, 256))
             self.tri_plane_gen = lambda z, *args, **kwargs: self.tri_plane.expand(z.shape[0], -1, -1, -1)
@@ -121,18 +76,12 @@ class TriPlaneNARF(NARFBase):
         else:
             self.tri_plane_gen = self.prepare_stylegan2((self.feat_dim + self.num_bone) * 3)
 
-        self.view_dependent = view_dependent
         if view_dependent:
             self.density_fc = StyledConv1d(32, 1, self.z2_dim)
-            self.mlp = StyledMLP(32 + 3 * nffo * 2, 64, 3, style_dim=self.z2_dim)
+            self.mlp = StyledMLP(32 + 3 * self.num_frequency_for_other * 2, 64, 3, style_dim=self.z2_dim)
         else:
             print("not view dependent")
             self.mlp = StyledMLP(32, 64, 4, style_dim=self.z2_dim)
-
-        self.bce = nn.BCEWithLogitsLoss()
-        self.l1 = nn.L1Loss()
-
-        self.temporal_state = {}
 
     @property
     def memory_cost(self):
@@ -424,56 +373,10 @@ class TriPlaneNARF(NARFBase):
 class SSONARF(NARFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=False, parent=None, num_bone_param=None, view_dependent: bool = True):
-        super(SSONARF, self).__init__()
-        assert num_bone_param is not None
-        assert hasattr(config, "origin_location")
-
+        assert config.origin_location in ["center", "center_fixed"]
         self.tri_plane_based = False
-        self.config = config
-        hidden_size = config.hidden_size
-        # use_world_pose = not config.no_world_pose
-        # use_ray_direction = not config.no_ray_direction
-        # self.final_activation = config.final_activation
-        self.origin_location = config.origin_location
-        self.coordinate_scale = config.coordinate_scale
-        # assert self.final_activation in ["tanh", "l2", None]
-        assert self.origin_location in ["center", "center_fixed", "center+head"]
-        assert parent is not None
-
-        # dim = 3  # xyz
-        # num_mlp_layers = 3
-        # self.out_dim = config.out_dim if "out_dim" in self.config else 3
-        self.parent_id = parent
-        self.use_bone_length = bone_length
-        # self.mask_before_PE = False
-        # self.group_conv_first = config.group_conv_first
-
-        # self.mask_input = self.config.concat and self.config.mask_input
-        # self.selector_activation = self.config.selector_activation
-        # selector_tmp = self.config.selector_adaptive_tmp.start
-        # self.register_buffer("selector_tmp", torch.tensor(selector_tmp).float())
-
-        self.density_activation = MyReLU.apply
-
-        # self.density_scale = config.density_scale
-
-        # parameters for position encoding
-        nffp = self.config.num_frequency_for_position if "num_frequency_for_position" in self.config else 10
-        nffo = self.config.num_frequency_for_other if "num_frequency_for_other" in self.config else 4
-
-        self.num_frequency_for_position = nffp
-        self.num_frequency_for_other = nffo
-
-        self.hidden_size = hidden_size
-        self.num_bone = num_bone - 1
-        self.num_bone_param = num_bone_param if num_bone_param is not None else num_bone
-
-        if type(z_dim) == list:
-            self.z_dim = z_dim[0]
-            self.z2_dim = z_dim[1]
-        else:
-            self.z_dim = z_dim
-            self.z2_dim = z_dim
+        super(SSONARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
+        hidden_size = self.hidden_size
 
         # selector
         hidden_dim_for_mask = 10
@@ -497,16 +400,11 @@ class SSONARF(NARFBase):
                                    hidden_size, num_layers=8, skips=(4,))
 
         self.density_fc = StyledConv1d(self.hidden_size, 1, self.z2_dim)
-        self.view_dependent = view_dependent
         if view_dependent:
-            self.mlp = StyledMLP(self.hidden_size + 3 * nffo * 2, self.hidden_size // 2,
+            self.mlp = StyledMLP(self.hidden_size + 3 * self.num_frequency_for_other * 2, self.hidden_size // 2,
                                  3, style_dim=self.z2_dim)
         else:
             self.mlp = StyledMLP(self.hidden_size, self.hidden_size // 2, 3, style_dim=self.z2_dim)
-
-        self.bce = nn.BCEWithLogitsLoss()
-        self.l1 = nn.L1Loss()
-        self.temporal_state = {}
 
     @staticmethod
     def to_local(points, pose_to_camera):

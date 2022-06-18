@@ -1,16 +1,72 @@
 import time
-from typing import Optional
+from typing import Optional, Union, List
 
 import torch
 from torch import nn
 
+from dependencies.NARF.activation import MyReLU
 from dependencies.NARF.mesh_rendering import render_mesh_, create_mesh
 from dependencies.NARF.rendering import render, render_entire_img
 
 
 class NARFBase(nn.Module):
-    def __init__(self):
+    def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
+                 bone_length=True, parent=None, num_bone_param=None, view_dependent: bool = False):
         super(NARFBase, self).__init__()
+        assert num_bone_param is not None
+        assert hasattr(config, "origin_location")
+
+        self.config = config
+        hidden_size = config.hidden_size
+        # use_world_pose = not config.no_world_pose
+        # use_ray_direction = not config.no_ray_direction
+        # self.final_activation = config.final_activation
+        self.origin_location = config.origin_location
+        self.coordinate_scale = config.coordinate_scale
+        # assert self.final_activation in ["tanh", "l2", None]
+        assert self.origin_location in ["center", "center_fixed", "center+head"]
+        assert parent is not None
+        # TODO integrate mip_nerf based rendering
+        # self.mip_nerf_resolution = config.mip_nerf_resolution
+        # self.mip_nerf = config.mip_nerf
+        # assert (self.mip_nerf_resolution is not None) == self.config.mip_nerf
+
+        # self.out_dim = config.out_dim if "out_dim" in self.config else 3
+        self.parent_id = parent
+        self.use_bone_length = bone_length
+
+        # self.mask_input = self.config.concat and self.config.mask_input
+        # self.selector_activation = self.config.selector_activation
+        # selector_tmp = self.config.selector_adaptive_tmp.start
+        # self.register_buffer("selector_tmp", torch.tensor(selector_tmp).float())
+
+        self.density_activation = MyReLU.apply
+        # self.density_scale = config.density_scale
+
+        # parameters for position encoding
+        nffp = self.config.num_frequency_for_position if "num_frequency_for_position" in self.config else 10
+        nffo = self.config.num_frequency_for_other if "num_frequency_for_other" in self.config else 4
+        self.num_frequency_for_position = nffp
+        self.num_frequency_for_other = nffo
+
+        self.hidden_size = hidden_size
+        self.num_bone = num_bone - 1 if self.origin_location in ["center", "center_fixed"] else num_bone
+
+        self.num_bone_param = num_bone_param if num_bone_param is not None else num_bone
+        assert self.num_bone == self.num_bone_param
+        if type(z_dim) == list:
+            self.z_dim = z_dim[0]
+            self.z2_dim = z_dim[1]
+        else:
+            self.z_dim = z_dim
+            self.z2_dim = z_dim
+
+        self.view_dependent = view_dependent
+
+        self.bce = nn.BCEWithLogitsLoss()
+        self.l1 = nn.L1Loss()
+
+        self.temporal_state = {}
 
     def time_start(self):
         torch.cuda.synchronize()
