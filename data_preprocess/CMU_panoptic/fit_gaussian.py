@@ -3,15 +3,13 @@ import os
 import pickle
 import sys
 
-import cv2
 import numpy as np
-import scipy.io
 import torch
 from smplx.body_models import SMPL
 from tqdm import tqdm
 
 sys.path.append("../../")
-from utils.smpl_utils import get_pose
+from dependencies.smpl_utils import get_pose
 
 
 def read_smpl(path, thin_out_rate=10):

@@ -12,7 +12,7 @@ from smplx.body_models import SMPL
 from tqdm import tqdm
 
 sys.path.append("../../")
-from utils.smpl_utils import get_pose
+from dependencies.smpl_utils import get_pose
 
 IMG_SIZE = 128
 CROP_SIZE = 180
