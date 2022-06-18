@@ -16,8 +16,6 @@ sys.path.append("dependencies/stylegan2_ada_pytorch")
 import dnnlib
 
 
-# TODO move shared variables to NARFBase
-
 class TriPlaneNARF(NARFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=True, parent=None, num_bone_param=None, view_dependent: bool = False):
