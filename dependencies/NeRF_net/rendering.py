@@ -273,6 +273,7 @@ def render(model: nn.Module, image_coord: torch.tensor, pose_to_camera: torch.te
     #         model.temporal_state["tri_plane_feature"] = z
 
     if model.coordinate_scale != 1:
+        pose_to_camera = pose_to_camera.clone()
         pose_to_camera[:, :, :3, 3] *= model.coordinate_scale
 
     # model.coarse_sample_v2(pose_to_camera, inv_intrinsics, 512)
