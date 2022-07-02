@@ -418,18 +418,6 @@ def render_entire_img(model: nn.Module, pose_to_camera: torch.Tensor, inv_intrin
     rendered_disparity = []
 
     with torch.set_grad_enabled(not no_grad):
-        # TODO: implement this outside of this function
-        # if model.tri_plane_based:
-        #     if model.origin_location == "center+head":
-        #         _bone_length = torch.cat([bone_length,
-        #                                   torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
-        #                                  dim=1)  # (B, 24)
-        #     else:
-        #         _bone_length = bone_length
-        #     tri_plane_feature = model.compute_tri_plane_feature(z, _bone_length)
-        # else:
-        #     tri_plane_feature = None
-
         for i in range(0, render_size ** 2, ray_batchsize):
             (rendered_color_i, rendered_mask_i,
              rendered_disparity_i) = render(model, img_coord[:, :, :, i:i + ray_batchsize],
