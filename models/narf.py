@@ -286,7 +286,6 @@ class TriPlaneNARF(NARFBase):
         :param model_input: dictionary of model input
         :return: density of input positions
         """
-        assert "tri_plane_feature" in model_input
         bone_length, z, z_rend = model_input["bone_length"], model_input["z"], model_input["z_rend"]
         tri_plane_feature, truncation_psi = model_input.get("tri_plane_feature"), model_input["truncation_psi"]
 

@@ -281,6 +281,7 @@ class NARFBase(nn.Module):
     def forward(self, batchsize, sampled_img_coord, pose_to_camera, inv_intrinsics,
                 z, z_rend, bone_length,
                 render_scale=1, Nc=64, Nf=128, return_intermediate=False,
+                truncation_psi=1,
                 camera_pose: Optional[torch.Tensor] = None,
                 return_disparity=False):
         """
@@ -292,12 +293,13 @@ class NARFBase(nn.Module):
         :param Nc:
         :param Nf:
         :param return_intermediate:
+        :param truncation_psi:
         :param camera_pose:
         :param return_disparity:
         :return: color and mask value for sampled rays
         """
         # TODO: triplane narfと関数をまとめる
-        model_input = {"z": z, "z_rend": z_rend, "bone_length": bone_length, "truncation_psi": 1}
+        model_input = {"z": z, "z_rend": z_rend, "bone_length": bone_length, "truncation_psi": truncation_psi}
         pose_to_camera, model_input["bone_length"] = self.transform_pose(pose_to_camera,
                                                                          model_input["bone_length"])
         return self._forward(sampled_img_coord, pose_to_camera, inv_intrinsics,
@@ -306,8 +308,8 @@ class NARFBase(nn.Module):
 
     def render_entire_img(self, pose_to_camera, inv_intrinsics, z, z_rend, bone_length, camera_pose=None,
                           render_size=128, Nc=64, Nf=128, semantic_map=False, use_normalized_intrinsics=False,
-                          no_grad=True):
-        model_input = {"z": z, "z_rend": z_rend, "bone_length": bone_length, "truncation_psi": 1}
+                          no_grad=True, truncation_psi=1, ):
+        model_input = {"z": z, "z_rend": z_rend, "bone_length": bone_length, "truncation_psi": truncation_psi}
         pose_to_camera, model_input["bone_length"] = self.transform_pose(pose_to_camera,
                                                                          model_input["bone_length"])
         if self.tri_plane_based:
