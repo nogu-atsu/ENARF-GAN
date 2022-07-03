@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 sys.path.append(".")
 from dependencies.config import yaml_config
-from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
+from dataset.dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from models.generator import NARFNRGenerator, TriNARFGenerator
 
 warnings.filterwarnings('ignore')

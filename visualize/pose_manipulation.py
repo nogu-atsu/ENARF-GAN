@@ -10,7 +10,7 @@ import torch
 from tqdm import tqdm
 
 sys.path.append(".")
-from dataset import HumanPoseDataset
+from dataset.dataset import HumanPoseDataset
 from models.generator import TriNARFGenerator
 from dependencies.config import yaml_config
 from dependencies.NARF.pose_utils import rotate_pose_by_angle, rotate_mesh_by_angle

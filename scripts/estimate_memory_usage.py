@@ -7,7 +7,7 @@ import sys
 
 sys.path.append(".")
 import time
-from dataset import SSODataset
+from dataset.dataset import SSODataset
 from models.generator import SSONARFGenerator
 import torch
 from torch.utils.data import DataLoader
