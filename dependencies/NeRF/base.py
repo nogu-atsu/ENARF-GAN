@@ -4,7 +4,7 @@ from typing import Optional, Union, List, Dict
 import torch
 from torch import nn
 
-from dependencies.NARF.activation import MyReLU
+from dependencies.NeRF.activation import MyReLU
 from dependencies.NeRF.rendering import render, render_entire_img
 
 
