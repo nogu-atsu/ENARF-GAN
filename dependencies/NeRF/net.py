@@ -6,7 +6,6 @@ from torch import nn
 from dependencies.NeRF.utils import StyledConv1d
 from dependencies.custom_stylegan2.net import EqualConv1d
 
-# TODO NeRF base module
 
 class StyledMLP(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, style_dim=512, num_layers=3):

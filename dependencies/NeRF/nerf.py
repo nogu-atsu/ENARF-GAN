@@ -7,9 +7,28 @@ from dependencies.NeRF.net import StyledMLP, MLP
 from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube, to_local
 
 
+def calc_density_and_color_from_feature(self, feature, z_rend, ray_direction):
+    density = self.density_fc(feature, z_rend)  # (B, 1, n)
+    if self.view_dependent:
+        if ray_direction is None:
+            color = None
+        else:
+            ray_direction = positional_encoding(ray_direction, self.num_frequency_for_other)
+            ray_direction = torch.repeat_interleave(ray_direction,
+                                                    feature.shape[-1] // ray_direction.shape[-1],
+                                                    dim=2)
+            color = self.mlp(torch.cat([feature, ray_direction], dim=1), z_rend)  # (B, 3, n)
+            color = torch.tanh(color)
+    else:
+        color = self.mlp(feature, z_rend)  # (B, 4, n)
+        color = torch.tanh(color)
+
+    density = self.density_activation(density)
+    return density, color
+
+
 class MLPNeRF(NeRFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, view_dependent: bool = True):
-        assert config.origin_location in ["center", "center_fixed"]
         self.tri_plane_based = False
         super(MLPNeRF, self).__init__(config, z_dim, view_dependent)
         self.initialize_network()
@@ -55,30 +74,12 @@ class MLPNeRF(NeRFBase):
             position_validity: bool tensor for validity of p, (B, n_bone, n)
             z: (B, dim)
             z_rend: (B, dim)
-            # mode: "weight_feature" or "weight_position"
             ray_direction: not None if color is view dependent
         Returns:
 
         """
-        # don't support mip-nerf rendering
         assert isinstance(p, torch.Tensor)
-        # assert mode in ["weight_position", "weight_feature"]
         encoded_p = encode(p, self.num_frequency_for_position)
         feature = self.density_mlp(encoded_p)
-        density = self.density_fc(feature, z_rend)  # (B, 1, n)
-        if self.view_dependent:
-            if ray_direction is None:
-                color = None
-            else:
-                ray_direction = positional_encoding(ray_direction, self.num_frequency_for_other)
-                ray_direction = torch.repeat_interleave(ray_direction,
-                                                        feature.shape[-1] // ray_direction.shape[-1],
-                                                        dim=2)
-                color = self.mlp(torch.cat([feature, ray_direction], dim=1), z_rend)  # (B, 3, n)
-                color = torch.tanh(color)
-        else:
-            color = self.mlp(feature, z_rend)  # (B, 4, n)
-            color = torch.tanh(color)
-
-        density = self.density_activation(density)
+        density, color = calc_density_and_color_from_feature(self, feature, z_rend, ray_direction)
         return density, color
