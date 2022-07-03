@@ -11,7 +11,20 @@ from torch.nn import functional as F
 
 sys.path.append("dependencies/stylegan2_pytorch")
 from dependencies.stylegan2_pytorch.op import FusedLeakyReLU, fused_leaky_relu
-from dependencies.stylegan2_pytorch.model import PixelNorm, Upsample, Blur, ModulatedConv2d, NoiseInjection, Generator
+from dependencies.stylegan2_pytorch.model import PixelNorm, Upsample, Blur, ModulatedConv2d, Generator
+
+
+class NoiseInjection(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.weight = nn.Parameter(torch.zeros(1))
+
+    def forward(self, image, noise: Optional[torch.Tensor] = None):
+        if noise is None:
+            noise = torch.empty_like(image[:, :1]).normal_()
+
+        return image + self.weight * noise
 
 
 class EqualConv2d(nn.Module):
