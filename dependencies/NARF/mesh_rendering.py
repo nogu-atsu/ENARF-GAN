@@ -11,7 +11,6 @@ from pytorch3d.renderer import (
 from pytorch3d.structures import Meshes
 from tqdm import tqdm
 
-from dependencies.NARF.pose_utils import transform_pose
 from dependencies.pytorch3d_utils import compute_projection_matrix_from_intrinsics
 
 

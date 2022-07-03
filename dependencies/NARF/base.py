@@ -43,7 +43,6 @@ class NARFBase(NeRFBase):
         :param return_disparity:
         :return: color and mask value for sampled rays
         """
-        # TODO: triplane narfと関数をまとめる
         model_input = {"z": z, "z_rend": z_rend, "bone_length": bone_length, "truncation_psi": truncation_psi}
         pose_to_camera, model_input["bone_length"] = self.transform_pose(pose_to_camera,
                                                                          model_input["bone_length"])
