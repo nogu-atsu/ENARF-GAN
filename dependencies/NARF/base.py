@@ -12,8 +12,11 @@ class NARFBase(NeRFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=True, parent=None, num_bone_param=None,
                  view_dependent: bool = False):
-        super(NARFBase, self).__init__(config, z_dim, num_bone, bone_length, parent,
-                                       num_bone_param, view_dependent)
+        super(NARFBase, self).__init__(config, z_dim, view_dependent)
+        self.num_bone = num_bone - 1 if self.origin_location in ["center", "center_fixed"] else num_bone
+        self.use_bone_length = bone_length
+        assert parent is not None
+        self.parent_id = parent
 
     def transform_pose(self, pose_to_camera: torch.Tensor, bone_length: torch.Tensor):
         pose_to_camera, bone_length = transform_pose(pose_to_camera, bone_length,

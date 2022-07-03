@@ -9,38 +9,24 @@ from dependencies.NeRF.rendering import render, render_entire_img
 
 
 class NeRFBase(nn.Module):
-    def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
-                 bone_length=True, parent=None, num_bone_param=None, view_dependent: bool = False, **kwargs):
+    def __init__(self, config, z_dim: Union[int, List[int]] = 256,
+                 view_dependent: bool = False, **kwargs):
         super(NeRFBase, self).__init__()
-        assert num_bone_param is not None
         assert hasattr(config, "origin_location")
 
         self.config = config
         hidden_size = config.hidden_size
-        # use_world_pose = not config.no_world_pose
-        # use_ray_direction = not config.no_ray_direction
-        # self.final_activation = config.final_activation
+
         self.origin_location = config.origin_location
         self.coordinate_scale = config.coordinate_scale
-        # assert self.final_activation in ["tanh", "l2", None]
+
         assert self.origin_location in ["center", "center_fixed", "center+head"]
-        assert parent is not None
         # TODO integrate mip_nerf based rendering
         # self.mip_nerf_resolution = config.mip_nerf_resolution
         # self.mip_nerf = config.mip_nerf
         # assert (self.mip_nerf_resolution is not None) == self.config.mip_nerf
 
-        # self.out_dim = config.out_dim if "out_dim" in self.config else 3
-        self.parent_id = parent
-        self.use_bone_length = bone_length
-
-        # self.mask_input = self.config.concat and self.config.mask_input
-        # self.selector_activation = self.config.selector_activation
-        # selector_tmp = self.config.selector_adaptive_tmp.start
-        # self.register_buffer("selector_tmp", torch.tensor(selector_tmp).float())
-
         self.density_activation = MyReLU.apply
-        # self.density_scale = config.density_scale
 
         # parameters for position encoding
         nffp = self.config.num_frequency_for_position if "num_frequency_for_position" in self.config else 10
@@ -49,10 +35,7 @@ class NeRFBase(nn.Module):
         self.num_frequency_for_other = nffo
 
         self.hidden_size = hidden_size
-        self.num_bone = num_bone - 1 if self.origin_location in ["center", "center_fixed"] else num_bone
 
-        self.num_bone_param = num_bone_param if num_bone_param is not None else num_bone
-        assert self.num_bone == self.num_bone_param
         if type(z_dim) == list:
             self.z_dim = z_dim[0]
             self.z2_dim = z_dim[1]
@@ -99,22 +82,7 @@ class NeRFBase(nn.Module):
         """
         raise NotImplementedError()
 
-    def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, tri_plane_feature: torch.Tensor,
-                 z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str = "weight_feature",
-                 ray_direction: Optional[torch.Tensor] = None):
-        """
-
-        Args:
-            p: position in canonical coordinate, (B, n_bone, 3, n)
-            position_validity: bool tensor for validity of p, (B, n_bone, n)
-            tri_plane_feature:
-            z_rend: (B, dim)
-            bone_length: (B, n_bone)
-            mode: "weight_feature" or "weight_position"
-            ray_direction: not None if color is view dependent
-        Returns:
-
-        """
+    def backbone(self, **kwargs):
         raise NotImplementedError()
 
     def _forward(self, sampled_img_coord, pose_to_camera, inv_intrinsics,
