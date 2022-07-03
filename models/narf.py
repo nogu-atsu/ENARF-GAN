@@ -10,7 +10,7 @@ from dependencies.NeRF.net import StyledMLP, MLP
 from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube, to_local
 from dependencies.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
-from dependencies.triplane.triplane_nerf import prepare_triplane_generator
+from dependencies.triplane.triplane_nerf import prepare_triplane_generator, calc_density_and_color_from_feature
 
 
 class TriPlaneNARF(NARFBase):
@@ -327,21 +327,8 @@ class TriPlaneNARF(NARFBase):
         else:
             raise ValueError()
 
-        if self.view_dependent:
-            density = self.density_fc(feature, z_rend)  # (B, 1, n)
-            if ray_direction is None:
-                color = None
-            else:
-                ray_direction = positional_encoding(ray_direction, self.num_frequency_for_other)
-                ray_direction = torch.repeat_interleave(ray_direction,
-                                                        feature.shape[-1] // ray_direction.shape[-1],
-                                                        dim=2)
-                color = self.mlp(torch.cat([feature, ray_direction], dim=1), z_rend)  # (B, 3, n)
-                color = torch.tanh(color)
-        else:
-            color_density = self.mlp(feature, z_rend)  # (B, 4, n)
-            color, density = color_density[:, :3], color_density[:, 3:]
-            color = torch.tanh(color)
+        density, color = calc_density_and_color_from_feature(self, feature, z_rend, ray_direction)
+
         if self.config.multiply_density_with_triplane_wieght:
             density = self.density_activation(density) * (10 * weight.max(dim=1, keepdim=True)[0])
         else:
