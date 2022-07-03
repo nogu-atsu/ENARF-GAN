@@ -44,7 +44,7 @@ def in_cube(p: torch.Tensor):
 
 
 # TODO positional encodingを呼ぶ
-def encode(value: Union[List, torch.tensor], num_frequency: int, num_bone: int):
+def multi_part_positional_encoding(value: Union[List, torch.tensor], num_frequency: int, num_bone: int):
     """
     positional encoding for group conv
     :param value: b x -1 x n

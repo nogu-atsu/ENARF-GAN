@@ -6,9 +6,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from dependencies.NARF.base import NARFBase
-from dependencies.NeRF.net import StyledMLP, MLP
-from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube, to_local
 from dependencies.NeRF.nerf import calc_density_and_color_from_feature
+from dependencies.NeRF.net import StyledMLP, MLP
+from dependencies.NeRF.utils import StyledConv1d, multi_part_positional_encoding, in_cube, to_local
 from dependencies.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
 from dependencies.triplane.triplane_nerf import prepare_triplane_generator, calc_density_and_color_from_feature
@@ -158,7 +158,7 @@ class TriPlaneNARF(NARFBase):
 
         elif hasattr(self, "selector"):  # use selector
             position = position.reshape(bs, n_bone * 3, n)
-            encoded_p = encode(position, self.num_frequency_for_position, self.num_bone)
+            encoded_p = multi_part_positional_encoding(position, self.num_frequency_for_position, self.num_bone)
             h = self.selector(encoded_p)
             weight = torch.softmax(h, dim=1)  # (B, n_bone, n)
         else:  # tri-plane based
@@ -306,7 +306,7 @@ class TriPlaneNARF(NARFBase):
         :return:
         """
         # generate tri-plane feature conditioned on z and bone_length
-        encoded_length = encode(bone_length, self.num_frequency_for_other, num_bone=self.num_bone)
+        encoded_length = multi_part_positional_encoding(bone_length, self.num_frequency_for_other, num_bone=self.num_bone)
         tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0],
                                                truncation_psi=truncation_psi)  # (B, (32 + n_bone) * 3, h, w)
         return tri_plane_feature
@@ -391,7 +391,7 @@ class MLPNARF(NARFBase):
         assert isinstance(p, torch.Tensor)
         assert bone_length is not None
         # assert mode in ["weight_position", "weight_feature"]
-        encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
+        encoded_p = multi_part_positional_encoding(p, self.num_frequency_for_position, self.num_bone)
         prob = self.selector(encoded_p)
 
         encoded_p = encoded_p * torch.repeat_interleave(prob, 3 * self.num_frequency_for_position * 2, dim=1)
@@ -400,7 +400,7 @@ class MLPNARF(NARFBase):
             expand_z = z[:, :, None].expand(-1, -1, p.shape[-1])
             dp = self.deformation_field(torch.cat([encoded_p, expand_z], dim=1))  # (B, num_bone * 3, n)
             p = p + dp
-            encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
+            encoded_p = multi_part_positional_encoding(p, self.num_frequency_for_position, self.num_bone)
 
         if self.config.model_type == "tnarf":
             feature = self.density_mlp(encoded_p, z)

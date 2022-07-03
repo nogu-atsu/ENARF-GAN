@@ -8,7 +8,7 @@ from tqdm import tqdm
 from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
 from dependencies.NeRF.net import StyledMLP
-from dependencies.NeRF.utils import StyledConv1d, encode
+from dependencies.NeRF.utils import StyledConv1d, multi_part_positional_encoding
 from dependencies.custom_stylegan2.net import EqualConv1d
 
 
@@ -290,8 +290,8 @@ class StyleNeRF(NeRF):
 
         def clac_p_and_length_feature(p, bone_length, z):
             if bone_length is not None:
-                encoded_length = encode(bone_length, self.num_frequency_for_other, num_bone=self.num_bone_param)
-            encoded_p = encode(p, self.num_frequency_for_position, num_bone=self.num_bone)
+                encoded_length = multi_part_positional_encoding(bone_length, self.num_frequency_for_other, num_bone=self.num_bone_param)
+            encoded_p = multi_part_positional_encoding(p, self.num_frequency_for_position, num_bone=self.num_bone)
 
             _mask_prob = None
             if self.mask_input:
@@ -341,7 +341,7 @@ class StyleNeRF(NeRF):
             def calc_ray_feature(ray_direction, z):
                 ray_direction = ray_direction.unsqueeze(3).repeat(1, 1, 1, n // ray_direction.shape[2])
                 ray_direction = ray_direction.reshape(batchsize, -1, n)
-                encoded_d = encode(ray_direction, self.num_frequency_for_other, num_bone=self.num_bone)
+                encoded_d = multi_part_positional_encoding(ray_direction, self.num_frequency_for_other, num_bone=self.num_bone)
 
                 if self.mask_input:
                     encoded_d = self.apply_mask(ray_direction, encoded_d, mask_prob,
