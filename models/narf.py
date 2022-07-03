@@ -25,11 +25,9 @@ class TriPlaneNARF(NARFBase):
         self.feat_dim = 32
         self.no_selector = config.no_selector
         super(TriPlaneNARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
+        self.initialize_network()
 
-        # self.fc_bone_length = torch.jit.script(
-        #     StyledConv1d(self.num_frequency_for_other * 2 * self.num_bone_param,
-        #                  self.z_dim, self.z_dim))
-
+    def initialize_network(self):
         if self.config.constant_triplane:
             self.tri_plane = nn.Parameter(torch.zeros(1, 32 * 3 + self.num_bone * 3, 256, 256))
             self.tri_plane_gen = lambda z, *args, **kwargs: self.tri_plane.expand(z.shape[0], -1, -1, -1)
@@ -74,7 +72,7 @@ class TriPlaneNARF(NARFBase):
         else:
             self.tri_plane_gen = self.prepare_stylegan2((self.feat_dim + self.num_bone) * 3)
 
-        if view_dependent:
+        if self.view_dependent:
             self.density_fc = StyledConv1d(32, 1, self.z2_dim)
             self.mlp = StyledMLP(32 + 3 * self.num_frequency_for_other * 2, 64, 3, style_dim=self.z2_dim)
         else:
@@ -411,6 +409,9 @@ class SSONARF(NARFBase):
         assert config.origin_location in ["center", "center_fixed"]
         self.tri_plane_based = False
         super(SSONARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
+        self.initialize_network()
+
+    def initialize_network(self):
         hidden_size = self.hidden_size
 
         # selector
@@ -435,7 +436,7 @@ class SSONARF(NARFBase):
                                    hidden_size, num_layers=8, skips=(4,))
 
         self.density_fc = StyledConv1d(self.hidden_size, 1, self.z2_dim)
-        if view_dependent:
+        if self.view_dependent:
             self.mlp = StyledMLP(self.hidden_size + 3 * self.num_frequency_for_other * 2, self.hidden_size // 2,
                                  3, style_dim=self.z2_dim)
         else:
