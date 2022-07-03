@@ -48,43 +48,26 @@ def render_mesh_(meshes, intrinsics, img_size, render_size=512):
     return images
 
 
-def create_mesh(self, pose_to_camera, z, z_rend, bone_length, voxel_size=0.003,
-                mesh_th=15, truncation_psi=0.4):
+def create_mesh(self, pose_to_camera, center, voxel_size=0.003,
+                mesh_th=15, model_input={}):
     import mcubes
 
-    assert z is None or z.shape[0] == 1
-    assert bone_length is None or bone_length.shape[0] == 1
     ray_batchsize = self.config.render_bs if hasattr(self.config, "render_bs") else 1048576
     device = pose_to_camera.device
     cube_size = int(1 / voxel_size)
 
-    center = pose_to_camera[:, 0, :3, 3:].clone()  # (1, 3, 1)
-
     bins = torch.arange(-cube_size, cube_size + 1) / cube_size
     p = (torch.stack(torch.meshgrid(bins, bins, bins)).reshape(1, 3, -1) + center.cpu()) * self.coordinate_scale
 
-    pose_to_camera, bone_length = transform_pose(pose_to_camera, bone_length,
-                                                 self.origin_location, self.parent_id)
-
     if self.coordinate_scale != 1:
         pose_to_camera[:, :, :3, 3] *= self.coordinate_scale
-    if self.tri_plane_based:
-        if self.origin_location == "center+head":
-            _bone_length = torch.cat([bone_length,
-                                      torch.ones(bone_length.shape[0], 1, 1, device=bone_length.device)],
-                                     dim=1)  # (B, 24)
-        else:
-            _bone_length = bone_length
-        z = self.compute_tri_plane_feature(z, _bone_length, truncation_psi=truncation_psi)
 
     density = []
     for i in tqdm(range(0, p.shape[-1], ray_batchsize)):
-        _density = \
-            self.calc_density_and_color_from_camera_coord(p[:, :, i:i + ray_batchsize].cuda(non_blocking=True),
-                                                          pose_to_camera,
-                                                          bone_length,
-                                                          z, z_rend,
-                                                          ray_direction=None)[0]  # (1, 1, n)
+        _density = self.calc_density_and_color_from_camera_coord_v2(
+            p[:, :, i:i + ray_batchsize].cuda(non_blocking=True),
+            pose_to_camera, ray_direction=None,
+            model_input=model_input)[0]  # (1, 1, n)
         density.append(_density)
     density = torch.cat(density, dim=-1)
     density = density.reshape(cube_size * 2 + 1, cube_size * 2 + 1, cube_size * 2 + 1).cpu().numpy()

@@ -65,13 +65,19 @@ class NARFBase(NeRFBase):
 
     def render_mesh(self, pose_to_camera, intrinsics, z, z_rend, bone_length, voxel_size=0.003,
                     mesh_th=15, truncation_psi=0.4, img_size=128):
-        raise NotImplementedError("new mesh rendering is not implemented")
         assert z is None or z.shape[0] == 1
         assert bone_length is None or bone_length.shape[0] == 1
 
-        meshes = create_mesh(self, pose_to_camera, z, z_rend, bone_length,
+        center = pose_to_camera[:, 0, :3, 3:].clone()  # (1, 3, 1)
+        model_input = {"z": z, "z_rend": z_rend, "bone_length": bone_length, "truncation_psi": truncation_psi}
+        pose_to_camera, model_input["bone_length"] = self.transform_pose(pose_to_camera,
+                                                                         model_input["bone_length"])
+        if self.tri_plane_based:
+            model_input["tri_plane_feature"] = self.compute_tri_plane_feature(z, bone_length)
+
+        meshes = create_mesh(self, pose_to_camera, center=center,
                              voxel_size=voxel_size,
-                             mesh_th=mesh_th, truncation_psi=truncation_psi)
+                             mesh_th=mesh_th, model_input=model_input)
 
         images = render_mesh_(meshes, intrinsics, img_size)
 
