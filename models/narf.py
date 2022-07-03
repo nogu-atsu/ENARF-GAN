@@ -141,45 +141,6 @@ class TriPlaneNARF(NARFBase):
         self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
         self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
 
-    def sample_weighted_feature_v2(self, tri_plane_features: torch.Tensor, position: torch.Tensor,
-                                   weight: torch.Tensor, position_validity: torch.Tensor, padding_value: float = 0):
-        # only compute necessary elements
-        batchsize, n_bone, n = position_validity.shape
-        _, ch, tri_size, _ = tri_plane_features.shape
-
-        # place tri-planes side by side to form a single tri-plane (quite tricky)
-        feature_padded = F.pad(tri_plane_features, (0, 1))  # (B, ch, 256, 257)
-        feature_padded = feature_padded.permute(1, 2, 0, 3).reshape(1, ch, tri_size, (tri_size + 1) * batchsize)
-
-        # gather valid rays
-        position_validity = position_validity.reshape(-1)
-        assert position_validity.dtype == torch.bool
-        valid_args = torch.where(position_validity)[0]  # (num_valid, )
-        num_valid = valid_args.shape[0]
-
-        if num_valid > 0:  # num_valid is 3e7 for zju dataset
-            position_perm = position.permute(2, 0, 1, 3).reshape(3, batchsize * n_bone * n)  # (3, B * n_bone * n)
-            valid_positions = torch.gather(position_perm, dim=1,
-                                           index=valid_args[None].expand(3, -1))[None]  # (1, 3, num_valid)
-            # challenge: this is very heavy
-            value = sample_feature(feature_padded, valid_positions, clamp_mask=self.config.clamp_mask,
-                                   batch_idx=valid_args // (n_bone * n))  # (1, 32, num_valid)
-            # gather weight
-            weight = torch.gather(weight.reshape(-1), dim=0, index=valid_args)
-
-            # * weight
-            value = value * weight[None, None]  # (1, 32, num_valid)
-
-            # memory efficient
-            output = torch.zeros(self.feat_dim, batchsize * n, device=position.device, dtype=torch.float32)
-            scatter_idx = valid_args // (n_bone * n) * n + valid_args % n
-            output.scatter_add_(dim=1, index=scatter_idx[None].expand(32, -1), src=value.squeeze(0))
-            output = output.reshape(self.feat_dim, batchsize, n).permute(1, 0, 2)
-            output = output.contiguous()
-        else:
-            output = torch.zeros(batchsize, self.feat_dim, n, device=position.device, dtype=torch.float32)
-        return output
-
     def calc_weight(self, tri_plane_weights: torch.Tensor, position: torch.Tensor, position_validity: torch.Tensor,
                     mode="prod"):
         """
