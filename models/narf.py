@@ -403,12 +403,12 @@ class TriPlaneNARF(NARFBase):
         return tri_plane_feature
 
 
-class SSONARF(NARFBase):
+class MLPNARF(NARFBase):
     def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
                  bone_length=False, parent=None, num_bone_param=None, view_dependent: bool = True):
         assert config.origin_location in ["center", "center_fixed"]
         self.tri_plane_based = False
-        super(SSONARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
+        super(MLPNARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
         self.initialize_network()
 
     def initialize_network(self):

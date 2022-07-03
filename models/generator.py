@@ -11,7 +11,7 @@ from dependencies.NeRF.ray_sampler import mask_based_sampler, whole_image_grid_r
 from dependencies.custom_stylegan2.net import Generator as StyleGANGenerator
 from dependencies.custom_stylegan2.net import StyledConv, ModulatedConv2d, PretrainedStyleGAN
 from dependencies.stylenarf.net import StyleNeRF, NeRF
-from models.narf import TriPlaneNARF, SSONARF
+from models.narf import TriPlaneNARF, MLPNARF
 
 
 class NeuralRenderer(nn.Module):
@@ -372,7 +372,7 @@ class SSONARFGenerator(nn.Module):
         self.num_bone = num_bone
         self.ray_sampler = mask_based_sampler
 
-        nerf = TriPlaneNARF if config.use_triplane else SSONARF
+        nerf = TriPlaneNARF if config.use_triplane else MLPNARF
 
         self.time_conditional = self.config.nerf_params.time_conditional
         self.pose_conditional = self.config.nerf_params.pose_conditional
