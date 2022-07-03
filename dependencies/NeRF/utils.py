@@ -43,7 +43,6 @@ def in_cube(p: torch.Tensor):
     return inside  # b x groups x 1 x n
 
 
-# TODO positional encodingを呼ぶ
 def multi_part_positional_encoding(value: Union[List, torch.tensor], num_frequency: int, num_bone: int):
     """
     positional encoding for group conv
@@ -52,21 +51,19 @@ def multi_part_positional_encoding(value: Union[List, torch.tensor], num_frequen
     :param num_bone: num_bone for positional encoding
     :return:
     """
-    # with autocast(enabled=False):
-    if isinstance(value, list):
+    if isinstance(value, list):  # mip-nerf positional encoding
         val, diag_sigma = value
+        b, _, n = val.shape
+        val, diag_sigma = val.reshape(b * num_bone, -1, n), diag_sigma.reshape(b * num_bone, -1, n)
+        gamma_p = mip_nerf_positional_encoding(val, diag_sigma, num_frequency)
     else:
         val = value
-        diag_sigma = None
-    b, _, n = val.shape
-    values = [2 ** i * val.reshape(b, num_bone, -1, n) * np.pi for i in range(num_frequency)]
-    values = torch.cat(values, dim=2)
-    gamma_p = torch.cat([torch.sin(values), torch.cos(values)], dim=2)
-    if diag_sigma is not None:
-        diag_sigmas = [4 ** i * diag_sigma.reshape(b, num_bone, -1, n) * np.pi for i in range(num_frequency)] * 2
-        diag_sigmas = torch.cat(diag_sigmas, dim=2)
-        gamma_p = gamma_p * torch.exp(-diag_sigmas / 2)
+        b, _, n = val.shape
+        val = val.reshape(b * num_bone, -1, n)
+        gamma_p = positional_encoding(val, num_frequency, cos_first=False, cat_dim=1)
+
     gamma_p = gamma_p.reshape(b, -1, n)
+
     # mask outsize [-1, 1]
     mask = (val.reshape(b, num_bone, -1, n).abs() > 1).float().sum(dim=2, keepdim=True) >= 1
     mask = mask.float().repeat(1, 1, gamma_p.shape[1] // num_bone, 1)
@@ -74,7 +71,7 @@ def multi_part_positional_encoding(value: Union[List, torch.tensor], num_frequen
     return gamma_p * (1 - mask)  # B x (groups * ? * L * 2) x n
 
 
-def positional_encoding(x: torch.Tensor, num_frequency: int) -> torch.Tensor:
+def positional_encoding(x: torch.Tensor, num_frequency: int, cos_first=True, cat_dim=2) -> torch.Tensor:
     """
     positional encoding
     :param x: (B, dim, n)
@@ -82,6 +79,28 @@ def positional_encoding(x: torch.Tensor, num_frequency: int) -> torch.Tensor:
     :return:(B, dim * n_freq * 2)
     """
     bs, dim, n = x.shape
-    x = x[:, :, None, :] * 2 ** torch.arange(num_frequency, device=x.device)[:, None] * np.pi
-    encoded = torch.cat([torch.cos(x), torch.sin(x)], dim=2)
+    x = x.unsqueeze(cat_dim) * 2 ** torch.arange(num_frequency,
+                                                 device=x.device)[None, :, None].unsqueeze(3 - cat_dim) * np.pi
+    if cos_first:
+        encoded = torch.cat([torch.cos(x), torch.sin(x)], dim=cat_dim)
+    else:
+        encoded = torch.cat([torch.sin(x), torch.cos(x)], dim=cat_dim)
     return encoded.reshape(bs, -1, n)
+
+
+def mip_nerf_positional_encoding(value: torch.Tensor, diag_sigma: torch.Tensor, num_frequency: int):
+    """
+    positional encoding of mip-nerf
+    :param value: (B, dim ,n)
+    :param diag_sigma: (B, dim, n)
+    :param num_frequency: L in NeRF paper
+    :return:
+    """
+    bs, dim, n = value.shape
+    gamma_p = positional_encoding(value, num_frequency, cos_first=False, cat_dim=1)
+    diag_sigma = diag_sigma[:, None, :, :] * 4 ** torch.arange(num_frequency,
+                                                               device=diag_sigma.device)[None, :, None, None] * np.pi
+    diag_sigma = torch.exp(-diag_sigma / 2)
+    diag_sigma = torch.cat([diag_sigma, diag_sigma], dim=1).reshape(bs, -1, n)
+    gamma_p = gamma_p * diag_sigma
+    return gamma_p

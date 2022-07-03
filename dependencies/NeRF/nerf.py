@@ -4,7 +4,7 @@ import torch
 
 from dependencies.NeRF.base import NeRFBase
 from dependencies.NeRF.net import StyledMLP, MLP
-from dependencies.NeRF.utils import StyledConv1d, multi_part_positional_encoding, positional_encoding, in_cube, to_local
+from dependencies.NeRF.utils import StyledConv1d, positional_encoding, in_cube, to_local
 
 
 def calc_density_and_color_from_feature(self, feature, z_rend, ray_direction):
@@ -79,7 +79,7 @@ class MLPNeRF(NeRFBase):
 
         """
         assert isinstance(p, torch.Tensor)
-        encoded_p = multi_part_positional_encoding(p, self.num_frequency_for_position)
+        encoded_p = positional_encoding(p, self.num_frequency_for_position)
         feature = self.density_mlp(encoded_p)
         density, color = calc_density_and_color_from_feature(self, feature, z_rend, ray_direction)
         return density, color
