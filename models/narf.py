@@ -8,6 +8,7 @@ from torch import nn
 from dependencies.NARF.base import NARFBase
 from dependencies.NeRF.net import StyledMLP, MLP
 from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube, to_local
+from dependencies.NeRF.nerf import calc_density_and_color_from_feature
 from dependencies.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
 from dependencies.triplane.triplane_nerf import prepare_triplane_generator, calc_density_and_color_from_feature
@@ -406,20 +407,5 @@ class MLPNARF(NARFBase):
         else:
             feature = self.density_mlp(encoded_p)
 
-        density = self.density_fc(feature, z_rend)  # (B, 1, n)
-        if self.view_dependent:
-            if ray_direction is None:
-                color = None
-            else:
-                ray_direction = positional_encoding(ray_direction, self.num_frequency_for_other)
-                ray_direction = torch.repeat_interleave(ray_direction,
-                                                        feature.shape[-1] // ray_direction.shape[-1],
-                                                        dim=2)
-                color = self.mlp(torch.cat([feature, ray_direction], dim=1), z_rend)  # (B, 3, n)
-                color = torch.tanh(color)
-        else:
-            color = self.mlp(feature, z_rend)  # (B, 4, n)
-            color = torch.tanh(color)
-
-        density = self.density_activation(density)
+        density, color = calc_density_and_color_from_feature(self, feature, z_rend, ray_direction)
         return density, color
