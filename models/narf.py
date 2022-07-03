@@ -1,5 +1,5 @@
 import sys
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Dict
 
 import numpy as np
 import torch
@@ -276,6 +276,44 @@ class TriPlaneNARF(NARFBase):
             })
         return density, color
 
+    def calc_density_and_color_from_camera_coord_v2(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
+                                                    ray_direction: torch.Tensor, model_input: Dict):
+        """compute density from positions in camera coordinate
+
+        :param position: (B, 3, n), n is a very large number of points sampled
+        :param pose_to_camera:
+        :param ray_direction:
+        :param model_input: dictionary of model input
+        :return: density of input positions
+        """
+        assert "tri_plane_feature" in model_input
+        bone_length, z, z_rend = model_input["bone_length"], model_input["z"], model_input["z_rend"]
+        tri_plane_feature, truncation_psi = model_input.get("tri_plane_feature"), model_input["truncation_psi"]
+
+        if self.tri_plane_based:
+            if tri_plane_feature is None:
+                z = self.compute_tri_plane_feature(z, bone_length, truncation_psi)
+            else:
+                z = tri_plane_feature
+            self.buffers_tensors["tri_plane_feature"] = z
+            if not self.training:
+                self.temporal_state["tri_plane_feature"] = z
+        # to local and canonical coordinate (challenge: this is heavy (B, n_bone * 3, n))
+        local_points, canonical_points = self.to_local_and_canonical(position, pose_to_camera, bone_length)
+
+        in_cube_p = in_cube(local_points)  # (B, n_bone, n)
+        in_cube_p = in_cube_p * (canonical_points.abs() < 1).all(dim=2)  # (B, n_bone, n)
+        density, color = self.backbone(canonical_points, in_cube_p, z, z_rend, bone_length, "weight_feature",
+                                       ray_direction)
+        density *= in_cube_p.any(dim=1, keepdim=True)  # density is 0 if not in cube
+
+        if not self.training:
+            self.temporal_state.update({
+                "canonical_fine_points": canonical_points,
+                "in_cube": in_cube(local_points),
+            })
+        return density, color
+
     def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, tri_plane_feature: torch.Tensor,
                  z_rend: torch.Tensor, bone_length: torch.Tensor, mode: str = "weight_feature",
                  ray_direction: Optional[torch.Tensor] = None):
@@ -437,6 +475,26 @@ class SSONARF(NARFBase):
         :param z_rend:
         :return: density of input positions
         """
+        local_points = self.to_local(position, pose_to_camera)
+
+        in_cube_p = in_cube(local_points)  # (B, n_bone, n)
+        density, color = self.backbone(local_points, in_cube_p, z, z_rend, bone_length, ray_direction)
+        density *= in_cube_p.any(dim=1, keepdim=True)
+        return density, color
+
+    def calc_density_and_color_from_camera_coord_v2(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
+                                                    ray_direction: torch.Tensor, model_input: Dict = {}):
+        """compute density from positions in camera coordinate
+
+        :param position:
+        :param pose_to_camera:
+        :param bone_length:
+        :param z:
+        :param z_rend:
+        :return: density of input positions
+        """
+        bone_length, z, z_rend = model_input["bone_length"], model_input["z"], model_input["z_rend"]
+
         local_points = self.to_local(position, pose_to_camera)
 
         in_cube_p = in_cube(local_points)  # (B, n_bone, n)
