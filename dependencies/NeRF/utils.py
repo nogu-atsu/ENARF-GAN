@@ -21,6 +21,7 @@ def in_cube(p: torch.Tensor):
     return inside  # b x groups x 1 x n
 
 
+# TODO positional encodingを呼ぶ
 def encode(value: Union[List, torch.tensor], num_frequency: int, num_bone: int):
     """
     positional encoding for group conv
