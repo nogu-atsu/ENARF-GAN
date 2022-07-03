@@ -80,7 +80,6 @@ def decide_frustrum_range(image_coord, pose_to_camera, inv_intrinsics,
         return camera_origin, depth_min, depth_max, ray_direction
 
 
-# TODO: originalからnum_boneを消しただけ
 def coarse_sample(image_coord: torch.tensor, pose_to_camera: torch.tensor,
                   inv_intrinsics: torch.tensor, near_plane: float = 0.3, far_plane: float = 5,
                   Nc: int = 64, camera_pose: Optional[torch.Tensor] = None, view_dependent=False,
@@ -171,9 +170,6 @@ def coarse_to_fine_sample(model: nn.Module, image_coord: torch.tensor, pose_to_c
     if coarse_depth is None:
         return (None,) * 4
 
-    # TODO change the interface of forward of model
-    # TODO compute triplane features in TriplaeNeRF
-    # TODO transform_pose outside this function
     coarse_density, _ = model.calc_density_and_color_from_camera_coord_v2(coarse_points, pose_to_camera,
                                                                           ray_direction=None,
                                                                           model_input=model_input)
@@ -259,18 +255,6 @@ def render(model: nn.Module, image_coord: torch.tensor, pose_to_camera: torch.te
 
     batchsize, num_bone, _, n = image_coord.shape
     device = image_coord.device
-
-    # TODO: do this outside this function
-    # pose_to_camera, bone_length = transform_pose(pose_to_camera, bone_length,
-    #                                              model.origin_location, model.parent_id)
-    # if model.tri_plane_based:
-    #     if tri_plane_feature is None:
-    #         z = model.compute_tri_plane_feature(z, bone_length, truncation_psi)
-    #     else:
-    #         z = tri_plane_feature
-    #     model.buffers_tensors["tri_plane_feature"] = z
-    #     if not model.training:
-    #         model.temporal_state["tri_plane_feature"] = z
 
     if model.coordinate_scale != 1:
         pose_to_camera = pose_to_camera.clone()
