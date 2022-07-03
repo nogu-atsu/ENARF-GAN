@@ -1,4 +1,3 @@
-import sys
 from typing import Union, List, Optional, Dict
 
 import numpy as np
@@ -8,7 +7,7 @@ from torch import nn
 
 from dependencies.NARF.base import NARFBase
 from dependencies.NeRF.net import StyledMLP, MLP
-from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube
+from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube, to_local
 from dependencies.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
 from dependencies.triplane.triplane_nerf import prepare_triplane_generator
@@ -403,28 +402,6 @@ class MLPNARF(NARFBase):
         else:
             self.mlp = StyledMLP(self.hidden_size, self.hidden_size // 2, 3, style_dim=self.z2_dim)
 
-    @staticmethod
-    def to_local(points, pose_to_camera):
-        """transform points to local coordinate
-
-        Args:
-            points:
-            pose_to_camera:
-
-        Returns:
-
-        """
-        # to local coordinate
-        R = pose_to_camera[:, :, :3, :3]  # (B, n_bone, 3, 3)
-        inv_R = R.permute(0, 1, 3, 2)
-        t = pose_to_camera[:, :, :3, 3:]  # (B, n_bone, 3, 1)
-        local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n*Nc)
-
-        # reshape local
-        bs, n_bone, _, n = local_points.shape
-        local_points = local_points.reshape(bs, n_bone * 3, n)
-        return local_points
-
     def calc_density_and_color_from_camera_coord_v2(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
                                                     ray_direction: torch.Tensor, model_input: Dict = {}):
         """compute density from positions in camera coordinate
@@ -438,7 +415,7 @@ class MLPNARF(NARFBase):
         """
         bone_length, z, z_rend = model_input["bone_length"], model_input["z"], model_input["z_rend"]
 
-        local_points = self.to_local(position, pose_to_camera)
+        local_points = to_local(position, pose_to_camera)
 
         in_cube_p = in_cube(local_points)  # (B, n_bone, n)
         density, color = self.backbone(local_points, in_cube_p, z, z_rend, bone_length, ray_direction)

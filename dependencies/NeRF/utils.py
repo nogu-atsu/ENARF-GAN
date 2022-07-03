@@ -10,6 +10,28 @@ StyledConv1d = lambda in_channel, out_channel, style_dim, groups=1: StyledConv(i
                                                                                groups=groups)
 
 
+def to_local(points, pose_to_camera):
+    """transform points to local coordinate
+
+    Args:
+        points:
+        pose_to_camera:
+
+    Returns:
+
+    """
+    # to local coordinate
+    R = pose_to_camera[:, :, :3, :3]  # (B, n_bone, 3, 3)
+    inv_R = R.permute(0, 1, 3, 2)
+    t = pose_to_camera[:, :, :3, 3:]  # (B, n_bone, 3, 1)
+    local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n*Nc)
+
+    # reshape local
+    bs, n_bone, _, n = local_points.shape
+    local_points = local_points.reshape(bs, n_bone * 3, n)
+    return local_points
+
+
 def in_cube(p: torch.Tensor):
     # whether the positions are in the cube [-1, 1]^3
     # :param p: b x groups * 3 x n (n = num_of_ray * points_on_ray)
