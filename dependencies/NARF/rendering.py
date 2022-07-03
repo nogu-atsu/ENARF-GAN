@@ -12,7 +12,7 @@ from torch import nn
 
 from dependencies.NARF.pose_utils import transform_pose
 from dependencies.NARF.utils_3d import create_unit_cube_mesh
-from dependencies.NeRF_net.utils import in_cube
+from dependencies.NeRF.utils import in_cube
 from dependencies.pytorch3d_utils import compute_projection_matrix_from_inv_intrinsics
 
 

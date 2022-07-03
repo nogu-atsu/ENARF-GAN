@@ -6,7 +6,7 @@ from torch import nn
 
 from dependencies.NARF.activation import MyReLU
 from dependencies.NARF.mesh_rendering import render_mesh_, create_mesh
-from dependencies.NeRF_net.rendering import render, render_entire_img
+from dependencies.NeRF.rendering import render, render_entire_img
 from dependencies.NARF.pose_utils import transform_pose
 
 
