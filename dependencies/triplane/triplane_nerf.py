@@ -162,7 +162,6 @@ class TriPlaneNeRF(NeRFBase):
         """
         Generate triplane features with stylegan
         :param z:
-        :param bone_length:
         :param truncation_psi:
         :return:
         """
