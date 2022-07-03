@@ -1,33 +1,48 @@
 import sys
 from typing import Union, List, Optional, Dict
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from dependencies.NARF.base import NARFBase
-from dependencies.NeRF.net import StyledMLP, MLP
+from dependencies.NeRF.base import NeRFBase
+from dependencies.NeRF.net import StyledMLP
 from dependencies.NeRF.utils import StyledConv1d, encode, positional_encoding, in_cube
 from dependencies.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
-from dependencies.triplane.triplane_nerf import prepare_triplane_generator
+
+sys.path.append("dependencies/stylegan2_ada_pytorch")
+import dnnlib
 
 
-class TriPlaneNARF(NARFBase):
-    def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
-                 bone_length=True, parent=None, num_bone_param=None, view_dependent: bool = False):
-        assert bone_length
+def prepare_triplane_generator(z_dim, w_dim, out_channels, c_dim=0):
+    G_kwargs = dnnlib.EasyDict(class_name='training.networks.Generator', z_dim=z_dim, w_dim=w_dim,
+                               mapping_kwargs=dnnlib.EasyDict(), synthesis_kwargs=dnnlib.EasyDict(use_noise=False))
+    G_kwargs.synthesis_kwargs.channel_base = 32768
+    G_kwargs.synthesis_kwargs.channel_max = 512
+    G_kwargs.mapping_kwargs.num_layers = 8
+    G_kwargs.synthesis_kwargs.num_fp16_res = 0
+    G_kwargs.synthesis_kwargs.conv_clamp = None
+
+    g_common_kwargs = dict(c_dim=c_dim,
+                           img_resolution=256, img_channels=out_channels)
+    gen = dnnlib.util.construct_class_by_name(**G_kwargs, **g_common_kwargs)
+    return gen
+
+
+class TriPlaneNeRF(NeRFBase):
+    def __init__(self, config, z_dim: Union[int, List[int]] = 256,
+                 view_dependent: bool = False):
         self.tri_plane_based = True
         self.w_dim = 512
         self.feat_dim = 32
         self.no_selector = config.no_selector
-        super(TriPlaneNARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
+        super(TriPlaneNeRF, self).__init__(config, z_dim, view_dependent)
         self.initialize_network()
 
     def initialize_network(self):
         if self.config.constant_triplane:
-            self.tri_plane = nn.Parameter(torch.zeros(1, 32 * 3 + self.num_bone * 3, 256, 256))
+            self.tri_plane = nn.Parameter(torch.zeros(1, 32 * 3, 256, 256))
             self.tri_plane_gen = lambda z, *args, **kwargs: self.tri_plane.expand(z.shape[0], -1, -1, -1)
         elif self.config.constant_trimask:
             self.generator = self.prepare_stylegan2(self.feat_dim * 3)
@@ -100,47 +115,7 @@ class TriPlaneNARF(NARFBase):
         return fl
 
     def prepare_stylegan2(self, in_channels):
-        return prepare_triplane_generator(
-            self.z_dim, self.w_dim, in_channels,
-            self.num_frequency_for_other * 2 * self.num_bone)
-
-    def register_canonical_pose(self, pose: np.ndarray) -> None:
-        """ register canonical pose.
-
-        Args:
-            pose: array of (24, 4, 4)
-
-        Returns:
-
-        """
-        assert self.origin_location in ["center", "center_fixed", "center+head"]
-        coordinate = pose[:, :3, 3]
-        length = np.linalg.norm(coordinate[1:] - coordinate[self.parent_id[1:]], axis=1)  # (23, )
-
-        canonical_joints = pose[1:, :3, 3]  # (n_bone, 3)
-        canonical_parent_joints = pose[self.parent_id[1:], :3, 3]  # (n_bone, 3)
-        self.register_buffer('canonical_joints', torch.tensor(canonical_joints, dtype=torch.float32))
-        self.register_buffer('canonical_parent_joints', torch.tensor(canonical_parent_joints, dtype=torch.float32))
-
-        if self.origin_location == "center":
-            # move origins to parts' center (self.origin_location == "center)
-            pose = np.concatenate([pose[1:, :, :3],
-                                   (pose[1:, :, 3:] +
-                                    pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
-        elif self.origin_location == "center_fixed":
-            pose = np.concatenate([pose[self.parent_id[1:], :, :3],
-                                   (pose[1:, :, 3:] +
-                                    pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
-        elif self.origin_location == "center+head":
-            length = np.concatenate([length, np.ones(1, )])  # (24,)
-            head_id = 15
-            _pose = np.concatenate([pose[self.parent_id[1:], :, :3],
-                                    (pose[1:, :, 3:] +
-                                     pose[self.parent_id[1:], :, 3:]) / 2], axis=-1)  # (23, 4, 4)
-            pose = np.concatenate([_pose, pose[head_id][None]])  # (24, 4, 4)
-
-        self.register_buffer('canonical_bone_length', torch.tensor(length, dtype=torch.float32))
-        self.register_buffer('canonical_pose', torch.tensor(pose, dtype=torch.float32))
+        return prepare_triplane_generator(self.z_dim, self.w_dim, in_channels)
 
     def sample_weighted_feature_v2(self, tri_plane_features: torch.Tensor, position: torch.Tensor,
                                    weight: torch.Tensor, position_validity: torch.Tensor, padding_value: float = 0):
@@ -206,13 +181,12 @@ class TriPlaneNARF(NARFBase):
 
         return weight
 
-    def to_local_and_canonical(self, points, pose_to_camera, bone_length):
-        """transform points to local and canonical coordinate
+    def to_local(self, points, pose_to_camera):
+        """transform points to local coordinate
 
         Args:
             points:
             pose_to_camera:
-            bone_length: (B, n_bone, 1)
 
         Returns:
 
@@ -223,17 +197,38 @@ class TriPlaneNARF(NARFBase):
         t = pose_to_camera[:, :, :3, 3:]  # (B, n_bone, 3, 1)
         local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n)
 
-        # to canonical coordinate
-        canonical_scale = (self.canonical_bone_length[:, None] / bone_length / self.coordinate_scale)[:, :, :, None]
-        canonical_points = local_points * canonical_scale
-        canonical_R = self.canonical_pose[:, :3, :3]  # (n_bone, 3, 3)
-        canonical_t = self.canonical_pose[:, :3, 3:]  # (n_bone, 3, 1)
-        canonical_points = torch.matmul(canonical_R, canonical_points) + canonical_t
-
         # reshape local
         bs, n_bone, _, n = local_points.shape
         local_points = local_points.reshape(bs, n_bone * 3, n)
-        return local_points, canonical_points
+        return local_points
+
+    def calc_density_and_color_from_camera_coord(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
+                                                 bone_length: torch.Tensor, z, z_rend, ray_direction):
+        """compute density from positions in camera coordinate
+
+        :param position: (B, 3, n), n is a very large number of points sampled
+        :param pose_to_camera:
+        :param bone_length:
+        :param z:
+        :param z_rend:
+        :param ray_direction:
+        :return: density of input positions
+        """
+        # to local and canonical coordinate (challenge: this is heavy (B, n_bone * 3, n))
+        local_points, canonical_points = self.to_local_and_canonical(position, pose_to_camera, bone_length)
+
+        in_cube_p = in_cube(local_points)  # (B, n_bone, n)
+        in_cube_p = in_cube_p * (canonical_points.abs() < 1).all(dim=2)  # (B, n_bone, n)
+        density, color = self.backbone(canonical_points, in_cube_p, z, z_rend, bone_length, "weight_feature",
+                                       ray_direction)
+        density *= in_cube_p.any(dim=1, keepdim=True)  # density is 0 if not in cube
+
+        if not self.training:
+            self.temporal_state.update({
+                "canonical_fine_points": canonical_points,
+                "in_cube": in_cube(local_points),
+            })
+        return density, color
 
     def calc_density_and_color_from_camera_coord_v2(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
                                                     ray_direction: torch.Tensor, model_input: Dict):
@@ -362,139 +357,3 @@ class TriPlaneNARF(NARFBase):
         tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0],
                                                truncation_psi=truncation_psi)  # (B, (32 + n_bone) * 3, h, w)
         return tri_plane_feature
-
-
-class MLPNARF(NARFBase):
-    def __init__(self, config, z_dim: Union[int, List[int]] = 256, num_bone=1,
-                 bone_length=False, parent=None, num_bone_param=None, view_dependent: bool = True):
-        assert config.origin_location in ["center", "center_fixed"]
-        self.tri_plane_based = False
-        super(MLPNARF, self).__init__(config, z_dim, num_bone, bone_length, parent, num_bone_param, view_dependent)
-        self.initialize_network()
-
-    def initialize_network(self):
-        hidden_size = self.hidden_size
-
-        # selector
-        hidden_dim_for_mask = 10
-        self.selector = nn.Sequential(nn.Conv1d(3 * self.num_frequency_for_position * 2 * self.num_bone,
-                                                hidden_dim_for_mask * self.num_bone, 1, groups=self.num_bone),
-                                      nn.ReLU(inplace=True),
-                                      nn.Conv1d(hidden_dim_for_mask * self.num_bone, self.num_bone, 1,
-                                                groups=self.num_bone),
-                                      nn.Softmax(dim=1))
-
-        if self.config.model_type == "dnarf":
-            self.deformation_field = MLP((self.num_bone * 3 + 1) * self.num_frequency_for_position * 2, hidden_size,
-                                         self.num_bone * 3, num_layers=8, skips=(4,))
-            self.density_mlp = MLP(self.num_bone * 3 * self.num_frequency_for_position * 2, hidden_size, hidden_size,
-                                   num_layers=8, skips=(4,))
-        elif self.config.model_type == "tnarf":
-            self.density_mlp = StyledMLP(self.num_bone * 3 * self.num_frequency_for_position * 2, hidden_size,
-                                         hidden_size, style_dim=self.z_dim, num_layers=8)
-        elif self.config.model_type == "narf":
-            self.density_mlp = MLP(self.num_bone * 3 * self.num_frequency_for_position * 2, hidden_size,
-                                   hidden_size, num_layers=8, skips=(4,))
-
-        self.density_fc = StyledConv1d(self.hidden_size, 1, self.z2_dim)
-        if self.view_dependent:
-            self.mlp = StyledMLP(self.hidden_size + 3 * self.num_frequency_for_other * 2, self.hidden_size // 2,
-                                 3, style_dim=self.z2_dim)
-        else:
-            self.mlp = StyledMLP(self.hidden_size, self.hidden_size // 2, 3, style_dim=self.z2_dim)
-
-    @staticmethod
-    def to_local(points, pose_to_camera):
-        """transform points to local coordinate
-
-        Args:
-            points:
-            pose_to_camera:
-
-        Returns:
-
-        """
-        # to local coordinate
-        R = pose_to_camera[:, :, :3, :3]  # (B, n_bone, 3, 3)
-        inv_R = R.permute(0, 1, 3, 2)
-        t = pose_to_camera[:, :, :3, 3:]  # (B, n_bone, 3, 1)
-        local_points = torch.matmul(inv_R, points[:, None] - t)  # (B, n_bone, 3, n*Nc)
-
-        # reshape local
-        bs, n_bone, _, n = local_points.shape
-        local_points = local_points.reshape(bs, n_bone * 3, n)
-        return local_points
-
-    def calc_density_and_color_from_camera_coord_v2(self, position: torch.Tensor, pose_to_camera: torch.Tensor,
-                                                    ray_direction: torch.Tensor, model_input: Dict = {}):
-        """compute density from positions in camera coordinate
-
-        :param position:
-        :param pose_to_camera:
-        :param bone_length:
-        :param z:
-        :param z_rend:
-        :return: density of input positions
-        """
-        bone_length, z, z_rend = model_input["bone_length"], model_input["z"], model_input["z_rend"]
-
-        local_points = self.to_local(position, pose_to_camera)
-
-        in_cube_p = in_cube(local_points)  # (B, n_bone, n)
-        density, color = self.backbone(local_points, in_cube_p, z, z_rend, bone_length, ray_direction)
-        density *= in_cube_p.any(dim=1, keepdim=True)
-        return density, color
-
-    def backbone(self, p: torch.Tensor, position_validity: torch.Tensor, z: torch.Tensor,
-                 z_rend: torch.Tensor, bone_length: torch.Tensor,
-                 ray_direction: Optional[torch.Tensor] = None):
-        """
-
-        Args:
-            p: position in local coordinate, (B, n_bone, 3, n)
-            position_validity: bool tensor for validity of p, (B, n_bone, n)
-            z: (B, dim)
-            z_rend: (B, dim)
-            bone_length: (B, n_bone)
-            # mode: "weight_feature" or "weight_position"
-            ray_direction: not None if color is view dependent
-        Returns:
-
-        """
-        # don't support mip-nerf rendering
-        assert isinstance(p, torch.Tensor)
-        assert bone_length is not None
-        # assert mode in ["weight_position", "weight_feature"]
-        encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
-        prob = self.selector(encoded_p)
-
-        encoded_p = encoded_p * torch.repeat_interleave(prob, 3 * self.num_frequency_for_position * 2, dim=1)
-
-        if self.config.model_type == "dnarf":
-            expand_z = z[:, :, None].expand(-1, -1, p.shape[-1])
-            dp = self.deformation_field(torch.cat([encoded_p, expand_z], dim=1))  # (B, num_bone * 3, n)
-            p = p + dp
-            encoded_p = encode(p, self.num_frequency_for_position, self.num_bone)
-
-        if self.config.model_type == "tnarf":
-            feature = self.density_mlp(encoded_p, z)
-        else:
-            feature = self.density_mlp(encoded_p)
-
-        density = self.density_fc(feature, z_rend)  # (B, 1, n)
-        if self.view_dependent:
-            if ray_direction is None:
-                color = None
-            else:
-                ray_direction = positional_encoding(ray_direction, self.num_frequency_for_other)
-                ray_direction = torch.repeat_interleave(ray_direction,
-                                                        feature.shape[-1] // ray_direction.shape[-1],
-                                                        dim=2)
-                color = self.mlp(torch.cat([feature, ray_direction], dim=1), z_rend)  # (B, 3, n)
-                color = torch.tanh(color)
-        else:
-            color = self.mlp(feature, z_rend)  # (B, 4, n)
-            color = torch.tanh(color)
-
-        density = self.density_activation(density)
-        return density, color
