@@ -21,7 +21,7 @@ def sample_feature(tri_plane_features: torch.tensor, position: torch.tensor, red
     batchsize, _, h, w = tri_plane_features.shape
     assert batchsize == 1 or batch_idx is None
     _, _, n = position.shape
-    if batchsize == 1 and reduction == "sum":
+    if batchsize == 1 and reduction == "sum" and batch_idx is None:
         position_2d = position.permute(0, 2, 1).contiguous()[:, :, None, :]
         feature = triplane_sampler(tri_plane_features, position_2d)[:, :, :, 0]
     else:

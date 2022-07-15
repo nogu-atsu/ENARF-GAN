@@ -2,6 +2,7 @@ import glob
 import os
 import pickle
 import random
+import sys
 
 import blosc
 import cv2
@@ -33,13 +34,15 @@ class THUmanPrior:
 
 class HumanDatasetBase(Dataset):
     def __init__(self, config, size=128, return_bone_params=True,
-                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=False):
+                 return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False,
+                 load_camera_intrinsics=False, return_mask=False):
         random.seed()
         self.size = size
         self.num_repeat_in_epoch = num_repeat_in_epoch
 
         self.return_bone_params = return_bone_params
         self.return_bone_mask = return_bone_mask
+        self.return_mask = return_mask
 
         # read params from config
         self.data_root = config.data_root
@@ -89,10 +92,12 @@ class HumanDatasetBase(Dataset):
         return_dict = {}
 
         img = self.get_image(i)
-
         if img.shape[0] == 4:  # last channel is mask
             mask = img[3]
             img = img[:3]
+            return_dict["mask"] = mask
+        elif self.return_mask:
+            mask = (img != 255).any(axis=0).astype("int")
             return_dict["mask"] = mask
 
         img = self.preprocess_img(img)
@@ -273,9 +278,9 @@ class HumanDataset(HumanDatasetBase):
 
     def __init__(self, config, size=128, return_bone_params=True,
                  return_bone_mask=False, num_repeat_in_epoch=100, just_cache=False, load_camera_intrinsics=True,
-                 **kwargs):
+                 return_mask=False, **kwargs):
         super(HumanDataset, self).__init__(config, size, return_bone_params, return_bone_mask, num_repeat_in_epoch,
-                                           just_cache, load_camera_intrinsics)
+                                           just_cache, load_camera_intrinsics, return_mask)
 
         self.focal_length = config.focal_length if hasattr(config, "focal_length") else None
         # common operations

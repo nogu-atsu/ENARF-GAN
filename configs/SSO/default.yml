@@ -7,22 +7,23 @@ dataset:
   name: hand2
   bs: 6  # batchsize
   image_size: 128
+  bg_color: -1
   train:
     random_background: True
-    data_root: path_to_your_dataset_root  # <- need change
+    data_root:
     n_frames: number_of_frames
     n_camera: 4
   val:
     train:
-      data_root: path_to_your_dataset_root  # <- need change
+      data_root:
       n_frames: number_of_frames
       n_camera: 4
     novel_view:
-      data_root: path_to_your_dataset_root  # <- need change
+      data_root:
       n_frames: number_of_frames
       n_camera: 17
     novel_pose:
-      data_root: path_to_your_dataset_root  # <- need change
+      data_root:
       n_frames: number_of_frames
       n_camera: 17
 

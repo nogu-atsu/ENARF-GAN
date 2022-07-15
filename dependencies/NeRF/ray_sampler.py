@@ -21,7 +21,7 @@ def mask_based_sampler(mask: torch.Tensor, ray_batchsize: int
     batchsize, h, w = mask.shape
 
     # expand mask
-    pad_size = h // 8
+    pad_size = 64  # h // 8
     mask = F.max_pool2d(mask.float(), pad_size * 2 + 1, stride=1, padding=pad_size)
     mask = mask.reshape(batchsize, h * w)
 
