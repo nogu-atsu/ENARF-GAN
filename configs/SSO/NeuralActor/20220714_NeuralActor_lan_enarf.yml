@@ -46,7 +46,7 @@ loss:
 num_iter: 100000
 lr: 0.001
 scheduler_gamma: 0.99995
-val_interval: 100 # validation interval
+val_interval: 500 # validation interval
 print_interval: 10
 tensorboard_interval: 100
 save_interval: 500

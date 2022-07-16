@@ -5,7 +5,7 @@ out: THUman/SSO/20220714_NeuralActor_lan_tpenarf
 
 dataset:
   name: human_v2
-  bs: 16  # batchsize
+  bs: 12  # batchsize
   image_size: 1024
   bg_color: 1
   train:
@@ -25,6 +25,7 @@ dataset:
 
 generator_params:
   use_triplane: True
+  ray_batchsize: 4096
   nerf_params:
     hidden_size: 256  # hidden size of NeRF
     Nc: 48  # number of points for coarse sampling
@@ -37,7 +38,7 @@ generator_params:
     deformation_field: True
     time_conditional: True
     pose_conditional: True
-    render_bs: 16384
+    render_bs: 8192
 
 loss:
   color_coef: 1
@@ -54,4 +55,4 @@ tensorboard_interval: 100
 save_interval: 500
 
 # snapshots
-resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/SSO/20220215_zju315_const_triplane/snapshot_latest.pth
+#resume: /data/unagi0/noguchi/D1/NARF_GAN/result/THUman/SSO/20220215_zju315_const_triplane/snapshot_latest.pth
