@@ -53,7 +53,7 @@ def read_frames(n_camera, person_id, split, n_frame, interval=1):
     # frames = [rsv.read_single_video(pcam_id) for cam_id in range(n_camera)]
 
     # multi process
-    p = Pool(6)
+    p = Pool(5)
     frames = p.map(rsv.read_single_video, range(n_camera))
 
     np_frames = []
@@ -116,6 +116,11 @@ def preprocess(config):
     save_cache(person_id, n_camera, n_train_frame, prefix="train", start_frame_idx=0, interval=1)
     save_cache(person_id, n_camera, n_test_frame, prefix="test", start_frame_idx=n_train_frame, interval=10)
 
+    global DEBUG
+    DEBUG = True
+    save_cache(person_id, n_camera, n_train_frame, prefix="train", start_frame_idx=0, interval=1)
+    save_cache(person_id, n_camera, n_test_frame, prefix="test", start_frame_idx=n_train_frame, interval=10)
+
 
 if __name__ == "__main__":
     DEBUG = False
@@ -123,7 +128,8 @@ if __name__ == "__main__":
     IMAGE_SIZE = 1024
 
     configs = [
-        {"person_id": "lan", "n_train_frame": 33605, "n_test_frame": 14235, "n_camera": 11},
+        # {"person_id": "lan", "n_train_frame": 33605, "n_test_frame": 14235, "n_camera": 11},
+        {"person_id": "marc", "n_train_frame": 38194, "n_test_frame": 23062, "n_camera": 12},
     ]
     for conf in configs:
         preprocess(conf)
