@@ -52,7 +52,7 @@ class NARFBase(NeRFBase):
 
     def render_entire_img(self, pose_to_camera, inv_intrinsics, z, z_rend, bone_length, camera_pose=None,
                           render_size=128, Nc=64, Nf=128, semantic_map=False, use_normalized_intrinsics=False,
-                          no_grad=True, truncation_psi=1, ):
+                          no_grad=True, truncation_psi=1, bbox=None):
         model_input = {"z": z, "z_rend": z_rend, "bone_length": bone_length, "truncation_psi": truncation_psi}
         pose_to_camera, model_input["bone_length"] = self.transform_pose(pose_to_camera,
                                                                          model_input["bone_length"])
@@ -60,7 +60,7 @@ class NARFBase(NeRFBase):
             model_input["tri_plane_feature"] = self.compute_tri_plane_feature(z, bone_length)
         return render_entire_img(self, pose_to_camera, inv_intrinsics, camera_pose,
                                  render_size, Nc, Nf, semantic_map, use_normalized_intrinsics,
-                                 no_grad, model_input)
+                                 no_grad, model_input, bbox=bbox)
 
     def render_mesh(self, pose_to_camera, intrinsics, z, z_rend, bone_length, voxel_size=0.003,
                     mesh_th=15, truncation_psi=0.4, img_size=128):

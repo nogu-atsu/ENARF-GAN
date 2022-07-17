@@ -364,7 +364,7 @@ def render(model: nn.Module, image_coord: torch.tensor, pose_to_camera: torch.te
 def render_entire_img(model: nn.Module, pose_to_camera: torch.Tensor, inv_intrinsics: torch.Tensor,
                       camera_pose: Optional[torch.Tensor] = None, render_size: int = 128, Nc: int = 64,
                       Nf: int = 128, semantic_map: bool = False, use_normalized_intrinsics: bool = False,
-                      no_grad: bool = True, model_input: Dict = {}):
+                      no_grad: bool = True, model_input: Dict = {}, bbox=None):
     """
     :param model:
     :param pose_to_camera:
@@ -378,6 +378,7 @@ def render_entire_img(model: nn.Module, pose_to_camera: torch.Tensor, inv_intrin
     :param no_grad:
     :param model_input: input dictionary for NeRF or NARF. Usually, nerf_input = {} for NeRF,
              and nerf_input = {"z":z, "z_rend":z_rend, "bone_length":bone_length}, with z: z for NeRF, tri-plane for TriNeRF
+    :param bbox:
     :return:
     """
     # TODO: implement this outside of this function
@@ -385,24 +386,32 @@ def render_entire_img(model: nn.Module, pose_to_camera: torch.Tensor, inv_intrin
     # assert bone_length is None or bone_length.shape[0] == 1
 
     ray_batchsize = model.config.render_bs
+    if bbox is not None:
+        render_width, render_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        x_offset, y_offset = bbox[0], bbox[1]
+    else:
+        render_width, render_height = render_size, render_size
+        x_offset, y_offset = 0, 0
 
     if use_normalized_intrinsics:
-        img_coord = torch.stack([(torch.arange(render_size * render_size) % render_size + 0.5) / render_size,
-                                 (torch.arange(render_size * render_size) // render_size + 0.5) / render_size,
-                                 torch.ones(render_size * render_size).long()], dim=0).float()
+        img_coord = torch.stack(
+            [(torch.arange(render_width * render_height, device="cuda") % render_width + 0.5 + x_offset) / render_size,
+             (torch.arange(render_width * render_height, device="cuda") // render_width + 0.5 + y_offset) / render_size,
+             torch.ones(render_width * render_height, device="cuda").long()], dim=0).float()
     else:
-        img_coord = torch.stack([torch.arange(render_size * render_size) % render_size + 0.5,
-                                 torch.arange(render_size * render_size) // render_size + 0.5,
-                                 torch.ones(render_size * render_size).long()], dim=0).float()
+        img_coord = torch.stack(
+            [torch.arange(render_width * render_height, device="cuda") % render_width + 0.5 + x_offset,
+             torch.arange(render_width * render_height, device="cuda") // render_width + 0.5 + y_offset,
+             torch.ones(render_width * render_height, device="cuda").long()], dim=0).float()
 
-    img_coord = img_coord[None, None].cuda()
+    img_coord = img_coord[None, None]
 
     rendered_color = []
     rendered_mask = []
     rendered_disparity = []
 
     with torch.set_grad_enabled(not no_grad):
-        for i in range(0, render_size ** 2, ray_batchsize):
+        for i in range(0, img_coord.shape[-1], ray_batchsize):
             (rendered_color_i, rendered_mask_i,
              rendered_disparity_i) = render(model, img_coord[:, :, :, i:i + ray_batchsize],
                                             pose_to_camera[:1],
@@ -419,6 +428,6 @@ def render_entire_img(model: nn.Module, pose_to_camera: torch.Tensor, inv_intrin
         rendered_mask = torch.cat(rendered_mask, dim=1)
         rendered_disparity = torch.cat(rendered_disparity, dim=1)
 
-    return (rendered_color.reshape(3, render_size, render_size),  # 3 x size x size
-            rendered_mask.reshape(render_size, render_size),  # size x size
-            rendered_disparity.reshape(render_size, render_size))  # size x size
+    return (rendered_color.reshape(3, render_height, render_width),  # 3 x size x size
+            rendered_mask.reshape(render_height, render_width),  # size x size
+            rendered_disparity.reshape(render_height, render_width))  # size x size

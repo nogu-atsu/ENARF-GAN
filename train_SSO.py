@@ -18,7 +18,7 @@ from dataset.dataset import SSODataset
 from dependencies.config import yaml_config
 from dependencies.train_utils import all_reduce
 from dependencies.train_utils import write
-from dependencies.visualization_utils import ssim, psnr, lpips
+from dependencies.visualization_utils import ssim, psnr, lpips, neural_actor_lpips
 from models.loss import loss_dist_func
 from models.generator import SSONARFGenerator
 
@@ -74,7 +74,7 @@ def create_dataset(config_dataset, just_cache=False):
 
 
 # no check
-def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=0, num_data=None):
+def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=0, num_data=None, crop=False):
     mse = nn.MSELoss()
 
     size = config.dataset.image_size
@@ -82,7 +82,13 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
 
     loss = dict()
 
-    loss_func = {"L2": mse, "SSIM": ssim, "PSNR": psnr, "LPIPS": lpips}
+    if "NeuralActor" in config.out:
+        lpips_func = neural_actor_lpips
+        print("using neural actor lpips")
+    else:
+        lpips_func = lpips
+        print("using lpips")
+    loss_func = {"L2": mse, "SSIM": ssim, "PSNR": psnr, "LPIPS": lpips_func}
     for key, val_loader in val_loaders.items():
         if num_data != 1 and key == "train":
             continue
@@ -92,7 +98,7 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
         val_loss_color = 0
         val_loss_mask = 0
         val_loss_color_metric = {met: 0 for met in metric}
-        for i, data in tqdm(enumerate(val_loader)):
+        for i, data in tqdm(enumerate(val_loader), total=num_data_all):
             # gen.eval()
             with torch.no_grad():
                 batch = {key: val.cuda(non_blocking=True).float() for key, val in data.items()}
@@ -106,8 +112,27 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
                 intrinsic = batch["intrinsics"]
                 inv_intrinsic = torch.inverse(intrinsic)
 
+                # bbox
+                if crop:
+                    x_ = torch.where(mask[0].any(dim=0))[0]
+                    if len(x_) == 0:
+                        print("no mask")
+                        continue
+                    x_min, x_max = x_[0], x_[-1]
+                    y_ = torch.where(mask[0].any(dim=1))[0]
+                    if len(y_) == 0:
+                        print("no mask")
+                        continue
+                    y_min, y_max = y_[0], y_[-1]
+                    bbox = (x_min, y_min, x_max, y_max)
+
+                    mask = mask[:, y_min:y_max, x_min:x_max]
+                    img = img[:, :, y_min:y_max, x_min:x_max]
+                else:
+                    bbox = None
+
                 gen_color, gen_mask, _ = gen.render_entire_img(pose_to_camera, inv_intrinsic, frame_time,
-                                                               bone_length, camera_rotation, size, )
+                                                               bone_length, camera_rotation, size, bbox=bbox)
 
                 if torch.isnan(gen_color).any():
                     print("NaN is detected")
@@ -121,7 +146,7 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
                 for met in metric:
                     val_loss_color_metric[met] += loss_func[met](img, gen_color).item()
 
-            if num_data == 1:
+            if i == _num_data - 1:
                 # save image
                 gen_color = torch.cat([gen_color, img], dim=-1)
                 gen_color = gen_color.cpu().numpy()[0].transpose(1, 2, 0) * 127.5 + 127.5
