@@ -1,7 +1,7 @@
 # NARF + Neural Rendering + GAN
 # paths
 out_root: /data/unagi0/noguchi/D1/NARF_GAN
-out: THUman/SSO/20220714_NeuralActor_lan_enarf
+out: THUman/SSO/20220714_NeuralActor_marc_enarf
 
 dataset:
   name: human_v2
@@ -9,8 +9,8 @@ dataset:
   image_size: 1024
   bg_color: 1
   train:
-    data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/train_cache_33605  # <- need change
-    n_frames: 33605
+    data_root: /data/unagi0/noguchi/dataset/NeuralActor/marc/train_cache_38194  # <- need change
+    n_frames: 38194
     n_camera: 12
   val:
 #    train:
@@ -20,8 +20,8 @@ dataset:
 #      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_313/test_novel_view_cache_1176  # <- need change
 #      n_frames: 1176
     novel_pose:
-      data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/test_debug_cache_14235  # <- need change
-      n_frames: 14235
+      data_root: /data/unagi0/noguchi/dataset/NeuralActor/marc/test_debug_cache_23062  # <- need change
+      n_frames: 23062
       n_camera: 12
 
 
@@ -47,7 +47,7 @@ loss:
 # hyper parameters
 num_iter: 100000
 lr: 0.001
-scheduler_gamma: 0.99995
+scheduler_gamma: 0.99997
 val_interval: 500 # validation interval
 print_interval: 10
 tensorboard_interval: 100
