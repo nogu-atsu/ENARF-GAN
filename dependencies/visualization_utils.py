@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from PIL import Image
 from skimage.metrics import structural_similarity
 import lpips as _lpips
+from lpips_pytorch import LPIPS
 
 
 def save_img(batch, name):  # b x 3 x size x size
@@ -39,4 +40,12 @@ loss_fn_vgg = _lpips.LPIPS(net='vgg').cuda()
 
 def lpips(img1, img2):
     lp = loss_fn_vgg(img1, img2)
+    return lp
+
+
+neural_actor_lpips_func = LPIPS(net_type='alex', version='0.1').cuda()
+
+
+def neural_actor_lpips(img1, img2):
+    lp = neural_actor_lpips_func(img1, img2)
     return lp
