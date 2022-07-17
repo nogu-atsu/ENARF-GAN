@@ -62,24 +62,32 @@ def compute_kpts(images, pose_model, det_model, mode):
             format='xyxy',
             dataset=pose_model.cfg.data.test.type)
 
-        # debug test to see how accurate kpt estimation is
-        if False:
-            vis_result = vis_pose_result(
-                pose_model,
-                img,
-                pose_results,
-                dataset=pose_model.cfg.data.test.type,
-                show=False)
-            vis_result = cv2.resize(vis_result, dsize=None, fx=0.5, fy=0.5)
-            cv2.imwrite(f'test_{mode}.png', vis_result)
-
         # no human even detected:
         if len(pose_results) == 0:
-            kps.append(-1e8 * np.ones((16, 3)))
+            kps.append(0 * np.ones((16, 3)))
             failed = 1
         else:
             kps.append(pose_results[0]['keypoints'])
 
+        # debug test to see how accurate kpt estimation is
+        if False:
+            # vis_result = vis_pose_result(
+            #     pose_model,
+            #     img,
+            #     pose_results,
+            #     dataset=pose_model.cfg.data.test.type,
+            #     show=False)
+            # # vis_result = cv2.resize(vis_result, dsize=None, fx=0.5, fy=0.5)
+            # cv2.imwrite(f'test_{mode}.png', vis_result)
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(10, 10))
+            plt.imshow(img)
+            pose = pose_results[0]["keypoints"]
+            plt.scatter(pose[:, 0], pose[:, 1])
+            for j in range(len(pose)):
+                plt.text(pose[j, 0], pose[j, 1], f"{pose[j, 2]:.4f}", color="red")
+            plt.savefig(f'test_{mode}_{i:0>4}.png')
+            plt.close()
     return np.stack(kps, 0), failed
 
 
@@ -87,7 +95,7 @@ def compute_pck_for_dataset(gen_iter, batch_size=64, batch_gen=None, pose_model=
     if batch_gen is None:
         batch_gen = min(batch_size, 4)
     assert batch_size % batch_gen == 0
-    batch_gen = 8
+    batch_gen = 16
 
     # SOME NETWORK INITIALIZATION
 
@@ -109,10 +117,13 @@ def compute_pck_for_dataset(gen_iter, batch_size=64, batch_gen=None, pose_model=
                 pred_scores = pred_kpts[..., -1]
                 pred_kpts = pred_kpts[..., :2]
 
-                mask = np.logical_and((gt_scores > 0.8), (pred_scores > 0.8))
-                # mask = (gt_scores > 0.8)
+                det_thres = 0.8
+                mask = np.logical_and((gt_scores > det_thres), (pred_scores > det_thres))
+                mask = np.logical_and(mask, gt_scores[:, 8, None] > det_thres)
+                mask = np.logical_and(mask, gt_scores[:, 9, None] > det_thres)
+                # mask = (gt_scores > 0.5)
                 thr = 0.5
-                interocular = np.linalg.norm(gt_kpts[:, 0, :] - gt_kpts[:, 1, :], axis=1, keepdims=True)
+                interocular = np.linalg.norm(gt_kpts[:, 8, :] - gt_kpts[:, 9, :], axis=1, keepdims=True)
                 normalize = np.tile(interocular, [1, 2])
 
                 oe = keypoint_pck_accuracy(pred_kpts, gt_kpts, mask, thr, normalize)
@@ -168,6 +179,7 @@ def main(config, batch_size=4, num_sample=10_000):
                 snapshot["gen"][k[:-13] + "bias"] = snapshot["gen"][k].reshape(1, -1, 1, 1)
                 del snapshot["gen"][k]
         gen.load_state_dict(snapshot["gen"], strict=False)
+        print(out_name, snapshot["iteration"])
     else:
         assert False, "pretrained model is not loading"
 

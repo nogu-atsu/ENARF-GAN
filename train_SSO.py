@@ -377,7 +377,7 @@ def validation_func(config, dataset, data_loader, rank, ddp=False):
 
     _, val_loaders = data_loader
 
-    val_loss = validate(gen, val_loaders, config, ddp, metric=["PSNR", "SSIM", "LPIPS"])
+    val_loss = validate(gen, val_loaders, config, ddp, metric=["PSNR", "SSIM", "LPIPS"], crop=True)
     torch.cuda.empty_cache()
     # write log
     if rank == 0:
