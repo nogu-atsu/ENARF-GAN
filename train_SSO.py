@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from NARF.models.loss import SparseLoss
-from dataset import SSODataset
+from dataset.dataset import SSODataset
 from dependencies.config import yaml_config
 from dependencies.train_utils import all_reduce
 from dependencies.train_utils import write
@@ -61,14 +61,14 @@ def create_dataset(config_dataset, just_cache=False):
     print("loading datasets")
     dataset_train = SSODataset(train_dataset_config, size=size, return_bone_params=True,
                                return_bone_mask=False, random_background=False, just_cache=just_cache,
-                               load_camera_intrinsics=True)
+                               load_camera_intrinsics=True, return_mask=True)
     datasets_val = dict()
     for key in val_dataset_config.keys():
         if val_dataset_config[key].data_root is not None:
             datasets_val[key] = SSODataset(val_dataset_config[key], size=size, return_bone_params=True,
                                            return_bone_mask=False, random_background=False,
                                            num_repeat_in_epoch=1, just_cache=just_cache,
-                                           load_camera_intrinsics=True)
+                                           load_camera_intrinsics=True, return_mask=True)
 
     return dataset_train, datasets_val
 
@@ -78,6 +78,7 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
     mse = nn.MSELoss()
 
     size = config.dataset.image_size
+    bg_color = config.dataset.bg_color
 
     loss = dict()
 
@@ -112,7 +113,7 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
                     print("NaN is detected")
                 gen_color = gen_color[None]
                 gen_mask = gen_mask[None, None]
-                gen_color = gen_color - (1 - gen_mask)
+                gen_color = gen_color + bg_color * (1 - gen_mask)
 
                 val_loss_mask += loss_func["L2"](mask, gen_mask).item()
                 val_loss_color += loss_func["L2"](img, gen_color).item()
@@ -240,7 +241,7 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
             gen_optimizer.zero_grad()
             # generate image (sparse sample)
             nerf_color, nerf_mask, grid = gen(pose_to_camera, camera_rotation, mask, frame_time,
-                                              bone_length, inv_intrinsic)
+                                              bone_length, inv_intrinsic, background=config.dataset.bg_color)
             loss_color, loss_mask = loss_func(grid, nerf_color, nerf_mask, img, mask)
 
             loss = loss_color + loss_mask
@@ -378,8 +379,9 @@ if __name__ == "__main__":
         config.dataset.train.data_root = config.dataset.train.data_root.replace("/data/unagi0/noguchi/dataset",
                                                                                 "/home/acc12675ut/data2")
         for k, v in config.dataset.val.items():
-            v.data_root = v.data_root.replace("/data/unagi0/noguchi/dataset",
-                                              "/home/acc12675ut/data2")
+            if v.data_root is not None:
+                v.data_root = v.data_root.replace("/data/unagi0/noguchi/dataset",
+                                                  "/home/acc12675ut/data2")
 
     if args.wisteria:  # replace path in wisteria
         config.out_root = config.out_root.replace("/data/unagi0/noguchi",
@@ -387,7 +389,8 @@ if __name__ == "__main__":
         config.dataset.train.data_root = config.dataset.train.data_root.replace("/data/unagi0/noguchi/dataset",
                                                                                 "/work/gn53/k75008/dataset")
         for k, v in config.dataset.val.items():
-            v.data_root = v.data_root.replace("/data/unagi0/noguchi/dataset",
-                                              "/work/gn53/k75008/dataset")
+            if v.data_root is not None:
+                v.data_root = v.data_root.replace("/data/unagi0/noguchi/dataset",
+                                                  "/work/gn53/k75008/dataset")
 
     train(config, args.validation)
