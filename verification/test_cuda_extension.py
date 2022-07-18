@@ -37,22 +37,24 @@ def test_triplane_sampler():
     in_h, in_w = 256, 256
     out_h, out_w = 3200, 10000
     a = torch.empty((bs, ch * 3, in_h, in_w), dtype=torch.float32, device="cuda").uniform_().requires_grad_(False)
-    index = torch.empty((bs, out_h, out_w, 3), dtype=torch.float32, device="cuda").uniform_(-1, 1).requires_grad_(False)
+    index = torch.empty((bs, out_h, out_w, 3), dtype=torch.float32, device="cuda").uniform_(-0.3, 0.3).requires_grad_(False)
 
     n_loop = 10
 
     # pytorch version
+    chunk_size = min(400, out_h)
     torch.cuda.synchronize()
     s = time.time()
     for i in range(n_loop):
         torch.cuda.synchronize()
-        index_tri = index[:, :, :, [0, 1, 1, 2, 2, 0]
-                    ].reshape(bs, out_h, out_w, 3, 2).permute(0, 3, 1, 2, 4).reshape(bs * 3, out_h, out_w, 2)
-        a_tri = a.reshape(bs * 3, ch, in_h, in_w)
-        out1 = F.grid_sample(a_tri, index_tri, mode="bilinear", align_corners=False)
-        out1 = out1.reshape(bs, 3, ch, out_h, out_w).sum(dim=1)
-        if out1.requires_grad:
-            out1.sum().backward()
+        for j in range(0, out_h, chunk_size):
+            index_tri = index[:, j:j + chunk_size, :, [0, 1, 1, 2, 2, 0]
+                        ].reshape(bs, chunk_size, out_w, 3, 2).permute(0, 3, 1, 2, 4).reshape(bs * 3, chunk_size, out_w, 2)
+            a_tri = a.reshape(bs * 3, ch, in_h, in_w)
+            out1 = F.grid_sample(a_tri, index_tri, mode="bilinear", align_corners=False)
+            out1 = out1.reshape(bs, 3, ch, chunk_size, out_w).sum(dim=1)
+            if out1.requires_grad:
+                out1.sum().backward()
     torch.cuda.synchronize()
     print("case 1:", time.time() - s)
     if a.requires_grad:
@@ -65,22 +67,28 @@ def test_triplane_sampler():
     index.grad = None
 
     # cpp version
+    chunk_size = min(400, out_h)
     torch.cuda.synchronize()
     s = time.time()
     for i in range(n_loop):
         torch.cuda.synchronize()
-        out1 = triplane_sampler(a, index, mode="bilinear", align_corners=False)
-        if out1.requires_grad:
-            out1.sum().backward()
+        for j in range(0, out_h, chunk_size):
+            out1 = triplane_sampler(a, index[:, j: j + chunk_size],
+                                    mode="bilinear", align_corners=False)
+            if out1.requires_grad:
+                out1.sum().backward()
     torch.cuda.synchronize()
     print("cpp:", time.time() - s)
     cpp_grad_a = a.grad
     cpp_grad_index = index.grad
     if cpp_grad_a is not None:
-        print(torch.isclose(pytorch_grad_a, cpp_grad_a).all())
+        print(torch.isclose(pytorch_grad_a, cpp_grad_a, rtol=1e-4).all())
     if cpp_grad_index is not None:
-        print(torch.isclose(pytorch_grad_index, cpp_grad_index).all())
-    print(torch.isclose(pytorch_out, out1).all())
+        print(torch.isclose(pytorch_grad_index, cpp_grad_index, rtol=1e-4).all())
+        print(pytorch_grad_index.shape, cpp_grad_index.shape)
+    if pytorch_out.shape == out1.shape:
+        print(torch.isclose(pytorch_out, out1).all())
+        print(pytorch_out.shape, out1.shape)
 
 
 def test_grid_sampler():
