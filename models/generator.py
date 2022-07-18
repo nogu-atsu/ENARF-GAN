@@ -480,7 +480,7 @@ class SSONARFGenerator(nn.Module):
 
     def render_entire_img(self, pose_to_camera, inv_intrinsics, frame_time, bone_length,
                           camera_pose=None, render_size=128,
-                          semantic_map=False, use_normalized_intrinsics=False, no_grad=True):
+                          semantic_map=False, use_normalized_intrinsics=False, no_grad=True, bbox=None):
         """
 
         :param pose_to_camera:
@@ -491,6 +491,8 @@ class SSONARFGenerator(nn.Module):
         :param render_size:
         :param semantic_map:
         :param use_normalized_intrinsics:
+        :param no_grad:
+        :param bbox:
         :return:
         """
         # sparse rendering
@@ -498,7 +500,7 @@ class SSONARFGenerator(nn.Module):
         return self.nerf.render_entire_img(pose_to_camera, inv_intrinsics, z1, z2, bone_length,
                                            camera_pose, render_size, self.config.nerf_params.Nc,
                                            self.config.nerf_params.Nf, semantic_map,
-                                           use_normalized_intrinsics, no_grad=no_grad)
+                                           use_normalized_intrinsics, no_grad=no_grad, bbox=bbox)
 
     def profile_memory_stats(self, pose_to_camera, inv_intrinsics, frame_time, bone_length,
                              camera_pose=None, render_size=128,
