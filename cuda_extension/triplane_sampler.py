@@ -75,7 +75,7 @@ class TriplaneSamplerFunction(torch.autograd.Function):
         grid_sample feature and probability for each part from triplane and sum up
         :param ctx:
         :param input: (B, C, H, W)
-        :param grid: (B, h, w, 2)
+        :param grid: (B, h, w, 3)
         :param mode: 'bilinear' or 'nearest'
         :param padding_mode:
         :param align_corners:
