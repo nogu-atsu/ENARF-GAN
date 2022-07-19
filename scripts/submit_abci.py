@@ -19,9 +19,12 @@ config_paths = [
 
     # "configs/SSO/ZJU/cvpr_exp/20220226_zju386_enarf_wo_selector_centerFixed.yml",
 
-    "configs/SSO/ZJU/cvpr_exp/20220310_zju313_enarf_wo_selector_centerFixed_noRay.yml",
-    "configs/SSO/ZJU/cvpr_exp/20220310_zju315_enarf_wo_selector_centerFixed_noRay.yml",
-    "configs/SSO/ZJU/cvpr_exp/20220310_zju386_enarf_wo_selector_centerFixed_noRay.yml",
+    # "configs/SSO/ZJU/cvpr_exp/20220310_zju313_enarf_wo_selector_centerFixed_noRay.yml",
+    # "configs/SSO/ZJU/cvpr_exp/20220310_zju315_enarf_wo_selector_centerFixed_noRay.yml",
+    # "configs/SSO/ZJU/cvpr_exp/20220310_zju386_enarf_wo_selector_centerFixed_noRay.yml",
+
+    # "configs/SSO/NeuralActor/20220714_NeuralActor_lan_enarf.yml",
+    "configs/SSO/NeuralActor/20220714_NeuralActor_lan_tpenarf.yml",
 ]
 
 for config in config_paths:
@@ -29,9 +32,8 @@ for config in config_paths:
 
     conf = yaml_config(config, "configs/SSO/default.yml")
     commands = f"""!/bin/bash
-
 #$-l rt_AG.small=1
-#$-l h_rt=24:00:00
+#$-l h_rt=48:00:00
 #$-j y
 #$-cwd
 
@@ -44,13 +46,16 @@ PATH=$PATH:$HOME/.local/bin:$HOME/bin
 export PATH
 
 source ~/.bash_profile
-pyenv local miniconda3-4.7.12/envs/NARFGAN
 
 cd /home/acc12675ut/D1/NARF-GAN-dev
+pyenv local miniconda3-4.7.12/envs/NARFGAN
 
 export TORCH_EXTENSIONS_DIR=/home/acc12675ut/data2/results/D1/NARF_GAN/result/{conf.out}
 
+# while :
+# do
 CUDA_VISIBLE_DEVICES=0 python train_SSO.py --abci --config {config} --num_workers 2 --resume_latest
+# done
 """
     os.makedirs("submit_commands", exist_ok=True)
     with open(f"submit_commands/exp_{exp_name}.sh", "w") as f:
