@@ -2,8 +2,8 @@ source ~/.zshrc_cuda111
 pyenv shell anaconda3-4.3.1/envs/cuda111
 
 
-CUDA_VISIBLE_DEVICES=5 python train_SSO.py --validation --config configs/SSO/NeuralActor/eval/20220714_NeuralActor_lan_enarf.yml --num_workers 2 --resume_latest
-CUDA_VISIBLE_DEVICES=5 python train_SSO.py --validation --config configs/SSO/NeuralActor/eval/20220714_NeuralActor_lan_tpenarf.yml --num_workers 2 --resume_latest
+CUDA_VISIBLE_DEVICES=7 python train_SSO.py --validation --config configs/SSO/NeuralActor/eval/20220714_NeuralActor_lan_enarf.yml --num_workers 2 --resume_latest
+#CUDA_VISIBLE_DEVICES=7 python train_SSO.py --validation --config configs/SSO/NeuralActor/eval/20220714_NeuralActor_lan_tpenarf.yml --num_workers 2 --resume_latest
 #CUDA_VISIBLE_DEVICES=2 python train_SSO.py --validation --config configs/SSO/NeuralActor/eval/20220714_NeuralActor_lan_enarf.yml --num_workers 2 --resume_latest
 #CUDA_VISIBLE_DEVICES=2 python train_SSO.py --validation --config configs/SSO/NeuralActor/eval/20220714_NeuralActor_lan_enarf.yml --num_workers 2 --resume_latest
 
