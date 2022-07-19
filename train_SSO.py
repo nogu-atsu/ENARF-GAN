@@ -25,6 +25,24 @@ from models.generator import SSONARFGenerator
 warnings.filterwarnings('ignore')
 
 
+def get_training_data_bbox(config_dataset, train_dataset):
+    save_path = f"{config_dataset.train.data_root}/training_data_bbox.npy"
+    if os.path.exists(save_path):
+        bbox = np.load(save_path)
+    else:
+        foreground = np.zeros((config_dataset.image_size, config_dataset.image_size), dtype=np.bool)
+        for i in tqdm(range(len(train_dataset.imgs))):
+            mask = train_dataset[i]["mask"]
+            assert mask.shape == foreground.shape
+            foreground = np.logical_or(foreground, mask)
+        x_ = np.where(foreground.any(axis=1))[0]
+        y_ = np.where(foreground.any(axis=0))[0]
+        x_min, x_max, y_min, y_max = x_[0], x_[-1], y_[0], y_[-1]
+        bbox = np.array([x_min, y_min, x_max, y_max])
+        np.save(save_path, bbox)
+    return bbox
+
+
 def train(config, validation=False):
     if validation:
         dataset, data_loader = create_dataloader(config.dataset)
@@ -73,8 +91,8 @@ def create_dataset(config_dataset, just_cache=False):
     return dataset_train, datasets_val
 
 
-# no check
-def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=0, num_data=None, crop=False):
+def validate(gen, val_loaders, train_dataset, config, ddp=False, metric=["SSIM", "PSNR"], iter=0, num_data=None,
+             crop=False):
     mse = nn.MSELoss()
 
     size = config.dataset.image_size
@@ -85,6 +103,8 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
     if "NeuralActor" in config.out:
         lpips_func = neural_actor_lpips
         print("using neural actor lpips")
+        training_bbox = get_training_data_bbox(config.dataset, train_dataset)
+        print(training_bbox)
     else:
         lpips_func = lpips
         print("using lpips")
@@ -99,7 +119,7 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
         val_loss_mask = 0
         val_loss_color_metric = {met: 0 for met in metric}
         for i, data in tqdm(enumerate(val_loader), total=num_data_all):
-            # gen.eval()
+            gen.eval()
             with torch.no_grad():
                 batch = {key: val.cuda(non_blocking=True).float() for key, val in data.items()}
 
@@ -137,8 +157,31 @@ def validate(gen, val_loaders, config, ddp=False, metric=["SSIM", "PSNR"], iter=
                 if torch.isnan(gen_color).any():
                     print("NaN is detected")
                 gen_color = gen_color[None]
-                gen_mask = gen_mask[None, None]
+                gen_mask = gen_mask[None]
                 gen_color = gen_color + bg_color * (1 - gen_mask)
+
+                if crop and "NeuralActor" in config.out:
+                    training_bbox_xmin, training_bbox_ymin, training_bbox_xmax, training_bbox_ymax = training_bbox
+                    _mask = torch.zeros(1, training_bbox_ymax - training_bbox_ymin,
+                                        training_bbox_xmax - training_bbox_xmin)
+                    _mask[:, y_min - training_bbox_ymin:y_max - training_bbox_ymin,
+                    x_min - training_bbox_xmin:x_max - training_bbox_xmin] = mask
+                    mask = _mask
+                    _img = torch.ones(1, 3, training_bbox_ymax - training_bbox_ymin,
+                                      training_bbox_xmax - training_bbox_xmin)
+                    _img[:, :, y_min - training_bbox_ymin:y_max - training_bbox_ymin,
+                    x_min - training_bbox_xmin:x_max - training_bbox_xmin] = img
+                    img = _img
+                    _gen_color = torch.ones(1, 3, training_bbox_ymax - training_bbox_ymin,
+                                            training_bbox_xmax - training_bbox_xmin)
+                    _gen_color[:, :, y_min - training_bbox_ymin:y_max - training_bbox_ymin,
+                    x_min - training_bbox_xmin:x_max - training_bbox_xmin] = gen_color
+                    gen_color = _gen_color
+                    _gen_mask = torch.zeros(1, training_bbox_ymax - training_bbox_ymin,
+                                            training_bbox_xmax - training_bbox_xmin)
+                    _gen_mask[:, y_min - training_bbox_ymin:y_max - training_bbox_ymin,
+                    x_min - training_bbox_xmin:x_max - training_bbox_xmin] = gen_mask
+                    gen_mask = _gen_mask
 
                 val_loss_mask += loss_func["L2"](mask, gen_mask).item()
                 val_loss_color += loss_func["L2"](img, gen_color).item()
@@ -377,7 +420,7 @@ def validation_func(config, dataset, data_loader, rank, ddp=False):
 
     _, val_loaders = data_loader
 
-    val_loss = validate(gen, val_loaders, config, ddp, metric=["PSNR", "SSIM", "LPIPS"], crop=True)
+    val_loss = validate(gen, val_loaders, dataset, config, ddp, metric=["PSNR", "SSIM", "LPIPS"], crop=True)
     torch.cuda.empty_cache()
     # write log
     if rank == 0:
