@@ -11,7 +11,7 @@ dataset:
   train:
     data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/train_cache_33605  # <- need change
     n_frames: 33605
-    n_camera: 12
+    n_camera: 11
   val:
 #    train:
 #      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_313/train_cache_1176  # <- need change
@@ -22,7 +22,7 @@ dataset:
     novel_pose:
       data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/test_debug_cache_14235  # <- need change
       n_frames: 14235
-      n_camera: 12
+      n_camera: 11
 
 
 generator_params:

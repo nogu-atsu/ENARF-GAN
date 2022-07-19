@@ -9,7 +9,7 @@ dataset:
   image_size: 1024
   bg_color: 1
   train:
-    data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/train_cache_33605  # <- need change
+    data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/train_debug_cache_33605  # <- need change
     n_frames: 33605
     n_camera: 11
   val:
@@ -20,7 +20,7 @@ dataset:
 #      data_root: /data/unagi0/noguchi/dataset/animatable_nerf_zju/CoreView_313/test_novel_view_cache_1176  # <- need change
 #      n_frames: 1176
     novel_pose:
-      data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/test_debug_cache_14235  # <- need change
+      data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/test_cache_14235  # <- need change
       n_frames: 14235
       n_camera: 11
 
