@@ -9,7 +9,7 @@ dataset:
   image_size: 1024
   bg_color: 1
   train:
-    data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/train_debug_cache_33605  # <- need change
+    data_root: /data/unagi0/noguchi/dataset/NeuralActor/lan/train_cache_33605  # <- need change
     n_frames: 33605
     n_camera: 11
   val:
