@@ -12,9 +12,9 @@ from models.generator import SSONARFGenerator
 warnings.filterwarnings('ignore')
 
 
-def main(args):
+def main():
     config_path = args.config
-    default_config_path = "configs/SSO/default.yml"
+    default_config_path = "configs/DSO/default.yml"
     config = yaml_config(config_path, default_config_path)
 
     size = config.dataset.image_size
@@ -44,7 +44,7 @@ def main(args):
 
     frame_time = torch.tensor([1.]).cuda(non_blocking=True)
 
-    with open(f"{args.sample_data_path}/sample_data.pickle", "rb") as f:
+    with open(f"{config.sample_path}/sample_data.pickle", "rb") as f:
         samples = pickle.load(f)
 
     save_dir = f"{config.out_root}/result/{config.out}/samples"

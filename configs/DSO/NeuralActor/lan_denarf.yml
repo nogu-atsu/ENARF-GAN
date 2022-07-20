@@ -1,6 +1,8 @@
 out_root: data
 out: DSO/NeuralActor/lan_denarf
 
+sample_path: data/NeuralActor/lan
+
 dataset:
   bs: 12  # batchsize
   image_size: 1024

@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import pickle
 import sys
 
@@ -35,8 +36,9 @@ def save_samples(n_frame, interval=1):
         sample_data.append({"pose_3d": pose_3d,
                             "intrinsics": intrinsics,
                             "bone_length": get_bone_length(pose_3d, SMPL_PARENTS)})
-
-    with open(f"{DIR_PATH}/{PERSON_NAME}/sample_data.pickle", "wb") as f:
+    out_dir = f"../data/NeuralActor/{PERSON_NAME}"
+    os.makedirs(out_dir)
+    with open(f"{out_dir}/sample_data.pickle", "wb") as f:
         pickle.dump(sample_data, f)
 
 
