@@ -5,7 +5,7 @@ import torch
 from smplx.lbs import (blend_shapes, vertices2joints, batch_rodrigues, batch_rigid_transform)
 from smplx.utils import Tensor
 
-
+# this code is modified from https://github.com/zju3dv/EasyMocap/blob/master/easymocap/smplmodel/lbs.py
 def get_pose(
         smpl,
         betas: Optional[Tensor] = None,

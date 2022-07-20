@@ -8,6 +8,7 @@ from easymocap.smplmodel.lbs import (batch_rigid_transform, batch_rodrigues,
                                      blend_shapes, vertices2joints, lbs)
 
 
+# modified from https://github.com/zju3dv/EasyMocap/blob/master/easymocap/smplmodel/lbs.py
 def extract_bone(betas, pose, v_template, shapedirs, J_regressor, parents,
                  pose2rot=True, dtype=torch.float32):
     ''' Performs Linear Blend Skinning with the given shape and pose parameters
@@ -100,12 +101,6 @@ class PoseLoader:
         return bone_pose_world[self.joints_to_use]
 
     def canonical_pose(self):
-        # Rh = np.zeros((1, 3))  # 1 x 3
-        # Th = np.zeros((1, 3))  # 1 x 3
-        poses = np.zeros((1, 87))  # 1 x 87
-        # shapes = np.zeros((1, 10))  # 1 x 10
-        expression = np.zeros((1, 10))  # 1 x 10
-
         shapes = torch.zeros(1, 10).float()
         expression = torch.zeros(1, 10).float()
         shapes = torch.cat([shapes, expression], dim=1)
@@ -119,10 +114,6 @@ class PoseLoader:
 
         bone_pose = A.clone()
         bone_pose[:, :, :3, 3] = joints
-
-        # trans = np.eye(4)
-        # trans[:3, :3] = cv2.Rodrigues(Rh[0])[0]
-        # trans[:3, 3] = Th
 
         bone_pose_world = bone_pose.numpy()[0]
         # move origin

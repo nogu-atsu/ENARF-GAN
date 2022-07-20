@@ -5,7 +5,6 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
-print("our module")
 import triplane_sampler_cuda
 
 GRID_SAMPLE_INTERPOLATION_MODES = {
