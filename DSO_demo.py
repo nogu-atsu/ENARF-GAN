@@ -38,13 +38,13 @@ def main(args):
         state_dict = torch.load(f"{config.out_root}/result/{config.out}/snapshot_latest.pth")["gen"]
         gen.load_state_dict(state_dict, strict=False)
     else:
-        print("model not loaded")
+        raise Exception("model not loaded")
 
     bg_color = config.dataset.bg_color
 
     frame_time = torch.tensor([1.]).cuda(non_blocking=True)
 
-    with open("/data/unagi0/noguchi/dataset/NeuralActor/lan/sample_data.pickle", "rb") as f:
+    with open(f"{args.sample_data_path}/sample_data.pickle", "rb") as f:
         samples = pickle.load(f)
 
     save_dir = f"{config.out_root}/result/{config.out}/samples"
