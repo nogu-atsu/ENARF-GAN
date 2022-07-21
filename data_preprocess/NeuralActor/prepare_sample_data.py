@@ -7,11 +7,9 @@ import sys
 import numpy as np
 from tqdm import tqdm
 
-sys.path.append(".")
-from utils import get_bone_length
+sys.path.append("../")
+from data_preprocess.utils import get_bone_length, SMPL_PARENTS
 
-SMPL_PARENTS = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13,
-                         14, 16, 17, 18, 19, 20, 21])
 
 
 def save_samples(n_frame, interval=1):
