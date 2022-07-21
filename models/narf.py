@@ -77,28 +77,6 @@ class TriPlaneNARF(NARFBase):
             print("not view dependent")
             self.mlp = StyledMLP(32, 64, 4, style_dim=self.z2_dim)
 
-    @property
-    def memory_cost(self):
-        m = 0
-        for layer in self.children():
-            if isinstance(layer, (StyledConv1d, EqualConv1d, StyledMLP)):
-                m += layer.memory_cost
-        return m
-
-    @property
-    def flops(self):
-        fl = 0
-        for layer in self.children():
-            if isinstance(layer, (StyledConv1d, EqualConv1d, StyledMLP)):
-                fl += layer.flops
-
-        if self.z_dim > 0:
-            fl += self.hidden_size * 2
-        if self.use_bone_length:
-            fl += self.hidden_size
-        fl += self.hidden_size * 2
-        return fl
-
     def prepare_stylegan2(self, in_channels):
         return prepare_triplane_generator(
             self.z_dim, self.w_dim, in_channels,
@@ -306,7 +284,8 @@ class TriPlaneNARF(NARFBase):
         :return:
         """
         # generate tri-plane feature conditioned on z and bone_length
-        encoded_length = multi_part_positional_encoding(bone_length, self.num_frequency_for_other, num_bone=self.num_bone)
+        encoded_length = multi_part_positional_encoding(bone_length, self.num_frequency_for_other,
+                                                        num_bone=self.num_bone)
         tri_plane_feature = self.tri_plane_gen(z, encoded_length[:, :, 0],
                                                truncation_psi=truncation_psi)  # (B, (32 + n_bone) * 3, h, w)
         return tri_plane_feature
