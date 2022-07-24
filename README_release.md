@@ -39,10 +39,10 @@ cd ENARF-GAN
   ```
 
 ### DeepCap Dataset
-- Download the DeepCap dataset used for training Neural Actor [here](https://vcai.mpi-inf.mpg.de/projects/NeuralActor/) (S1_marc.zip, S2_lan.zip)
+- Download the DeepCap dataset used for training Neural Actor from [here](https://vcai.mpi-inf.mpg.de/projects/NeuralActor/) (S1_marc.zip, S2_lan.zip)
 - Unzip them and `transform.zip` inside them
   ```
-  <path_to_NeuralActor>
+  <path_to_data>
         ├── lan
         │   ├── intrinsic
         │   └── ...
@@ -56,6 +56,24 @@ cd ENARF-GAN
   python NeuralActor/prepare_sample_data.py --data_path <path_to_NeuralActor> --person_name lan
   python NeuralActor/prepare_sample_data.py --data_path <path_to_NeuralActor> --person_name marc
   ```
+
+### ZJU MOCAP
+
+- Requirements: [EasyMocap](https://github.com/zju3dv/EasyMocap)
+
+- Download the [ZJU MOCAP dataset](https://github.com/zju3dv/animatable_nerf/blob/master/INSTALL.md#zju-mocap-dataset) used for training AnimatableNeRF
+  ```
+  <path_to_data>
+        ├── CoreView_313
+        ├── CoreView_315
+        └── CoreView_386
+  ```
+- Run
+  ```angular2html
+  cd data_preprocess
+  python ZJU_SSO/prepare_sample_data.py --data_path /data/unagi0/noguchi/dataset/animatable_nerf_zju --person_id 313 
+  ```
+
 
 ### SURREAL Dataset
 - Download the [SURREAL dataset](https://github.com/gulvarol/surreal) as

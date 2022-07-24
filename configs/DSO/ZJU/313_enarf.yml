@@ -1,0 +1,15 @@
+# NARF + Neural Rendering + GAN
+# paths
+out_root: data
+out: DSO/ZJU/313_enarf
+
+sample_path: data/ZJU_DSO/313
+
+dataset:
+  bs: 16  # batchsize
+  image_size: 512
+
+generator_params:
+  use_triplane: True
+  nerf_params:
+    constant_triplane: True
