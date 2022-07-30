@@ -17,7 +17,7 @@ from dependencies.smpl_utils import get_pose
 from data_preprocess.utils import get_bone_length, SMPL_PARENTS
 
 
-def preprocess_intrinsic(intrinsic, rot, trans, pose):
+def preprocess(intrinsic, rot, trans, pose):
     if algo == "resize":
         intri = intrinsic.copy()
         intri[:2] /= save_scale
@@ -71,14 +71,12 @@ def save_sample_data(person_id):
             smpl_pose = smpl_pose.numpy()
             smpl_pose[:, :, :3, 3] *= smpl_scaling
             smpl_pose[:, :, :3, 3] += smpl_trans[:1, None]
-            smpl_pose[:, :, :3, 3] /= 100
 
-            # rotate
-            smpl_pose[:, :, :3, :3] = np.matmul(rmat,
-                                                smpl_pose[:, :, :3, :3])
-            smpl_pose[:, :, :3, 3:] = np.matmul(rmat, smpl_pose[:, :, :3, 3:]) + tvec
+        intri = preprocess(camera_mat, rmat, tvec, smpl_pose[0])
 
-        intri = preprocess_intrinsic(camera_mat, rmat, tvec, smpl_pose[0])
+        # rotate
+        smpl_pose[:, :, :3, :3] = np.matmul(rmat, smpl_pose[:, :, :3, :3])
+        smpl_pose[:, :, :3, 3:] = (np.matmul(rmat, smpl_pose[:, :, :3, 3:]) + tvec) / 100
 
         sample_data.append({
             "pose_to_camera": smpl_pose[0],
@@ -87,7 +85,7 @@ def save_sample_data(person_id):
         })
 
     out_dir = f"../data/aist++"
-    os.makedirs(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
     with open(f"{out_dir}/sample_data.pickle", "wb") as f:
         pickle.dump(sample_data, f)
 
