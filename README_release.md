@@ -13,7 +13,7 @@ We have only tested the code on NVIDIA A100 and A6000 GPUs.
 ```angular2html
 git clone --recursive git@github.com:nogu-atsu/ENARF-GAN.git
 cd ENARF-GAN
-
+pip install -r requirements.txt
 ```
 
 ## Dataset Preprocessing
