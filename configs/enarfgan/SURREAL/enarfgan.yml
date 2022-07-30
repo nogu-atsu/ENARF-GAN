@@ -7,8 +7,6 @@ dataset:
   name: human_v2
   bs: 12  # batchsize
   image_size: 128
-  train:
-    data_root: /data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/NARF_GAN_cache  # <- need change
 
 generator_params:
   z_dim: 256
