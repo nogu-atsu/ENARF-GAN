@@ -97,7 +97,7 @@ pip install -r requirements.txt
   <path_to_aist++>
       ├── gLO_sBM_c07_d15_mLO5_ch03.mp4
       └── ...
-  <path_to_annotatin>
+  <path_to_annotation>
       ├── camearas
       ├── ingore_list.txt
       ├── keypoints2d
