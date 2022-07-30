@@ -18,6 +18,7 @@ cd ENARF-GAN
 
 ## Dataset Preprocessing
 ### Prepare SMPL models
+- Install smplx: `pip install smplx`
 - Download the SMPL models
   following [EasyMocap installation](https://github.com/zju3dv/EasyMocap/blob/master/doc/installation.md). You only need to download smplx models.
   ```
@@ -88,6 +89,27 @@ cd ENARF-GAN
   cd data_preprocess
   python surreal/prepare_sample_data.py --data_path <path_to_surreal>
   ```
+
+### AIST++ Dataset
+- Install [aist_plusplus](https://github.com/google/aistplusplus_api/)
+- Download the [AIST++ dataset](https://google.github.io/aistplusplus_dataset/) as
+  ```
+  <path_to_aist++>
+      ├── gLO_sBM_c07_d15_mLO5_ch03.mp4
+      └── ...
+  <path_to_annotatin>
+      ├── camearas
+      ├── ingore_list.txt
+      ├── keypoints2d
+      ├── keypoints3d
+      ├── motions
+      └── splits
+  ```
+- Run
+  ```
+    cd data_preprocess
+  python AIST/prepare_sample_data.py --data_path <path_to_aist++> --annotation_path <path_to_annotatin>
+  ```
 ## Demo
 ### Dynamic Scene Overfitting (DSO)
 - Example command for running the DSO model
@@ -95,3 +117,9 @@ cd ENARF-GAN
   python DSO_demo.py --config configs/DSO/NeuralActor/lan_denarf.yml 
   ```
 - Synthesized images are saved in `data/result/DSO/NeuralActor/lan_denarf/samples`
+
+### GAN
+- Example command for running the GAN model
+  ```
+  python ENARF_GAN_demo.py --config configs/enarfgan/AIST/enarfgan.yml
+  ```
