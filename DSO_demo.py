@@ -34,8 +34,9 @@ def main():
 
     gen.to("cuda").eval()
 
-    if os.path.exists(f"{config.out_root}/result/{config.out}/snapshot_latest.pth"):
-        state_dict = torch.load(f"{config.out_root}/result/{config.out}/snapshot_latest.pth")["gen"]
+    snapshot_path = f"{config.out_root}/result/{config.out}/snapshot_latest.pth"
+    if os.path.exists(snapshot_path):
+        state_dict = torch.load(snapshot_path)["gen"]
         gen.load_state_dict(state_dict, strict=False)
     else:
         raise Exception("model not loaded")
