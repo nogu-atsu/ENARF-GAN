@@ -53,9 +53,10 @@ def main():
     save_dir = f"{config.out_root}/result/{config.out}/samples"
     os.makedirs(save_dir, exist_ok=True)
     for idx, data in tqdm(enumerate(samples)):
-        pose_to_camera = data["pose_to_camera"].cuda(non_blocking=True)
-        bone_length = data["bone_length"].cuda(non_blocking=True)
-        intrinsic = data["intrinsics"].cuda(non_blocking=True)
+        data = {key: torch.tensor(val).cuda(non_blocking=True).float() for key, val in data.items()}
+        pose_to_camera = data["pose_to_camera"][None]
+        bone_length = data["bone_length"][None]
+        intrinsic = data["intrinsics"][None]
         inv_intrinsic = torch.inverse(intrinsic)
 
         z_dim = gen.config.z_dim * 4
@@ -75,7 +76,7 @@ def main():
             fake_img = fake_img * 127.5 + 127.5
             fake_img = np.clip(fake_img, 0, 255).astype("uint8")
 
-            fake_mask = fake_mask.cpu().numpy()[0]
+            fake_mask = (fake_mask.cpu().numpy()[0] * 255).astype("uint8")
 
         Image.fromarray(fake_img).save(f"{save_dir}/img_{idx:0>4}.png")
         Image.fromarray(fake_mask).save(f"{save_dir}/mask_{idx:0>4}.png")

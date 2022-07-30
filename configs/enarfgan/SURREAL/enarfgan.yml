@@ -2,7 +2,7 @@
 # paths
 out_root: data
 out: GAN/SURREAL/enarfgan
-
+sample_path: data/surreal
 dataset:
   name: human_v2
   bs: 12  # batchsize

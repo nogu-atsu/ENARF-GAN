@@ -1,6 +1,7 @@
 # paths
 out_root: path_to_your_output_root  # <- need change
 out: output_directory  # <- need change
+sample_path:
 
 dataset:
   data_root:
