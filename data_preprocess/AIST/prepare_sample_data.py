@@ -91,35 +91,11 @@ def save_sample_data(person_id):
 
     np.save(f'{out_dir}/canonical.npy', np.load(f"{SMPL_MODEL_PATH}/male_canonical.npy"))
 
-    #
-    # all_video = np.concatenate(all_video, axis=0)
-    # all_processed_intrinsic = np.concatenate(all_processed_intrinsic, axis=0)
-    # all_validity = np.concatenate(all_validity, axis=0)
-    # all_rmat = np.concatenate(all_rmat, axis=0)
-    # all_tvec = np.concatenate(all_tvec, axis=0)
-    # all_smpl = np.concatenate(all_smpl, axis=0)
-    #
-    #
-    # print("num frames", len(all_video))
-    # sample_idx = np.linspace(0, len(all_video) - 1, N_PER_PERSON, dtype="int")
-    #
-    # all_video = all_video[sample_idx]
-    # all_processed_intrinsic = all_processed_intrinsic[sample_idx]
-    # # all_validity = all_validity[sample_idx]
-    # all_rmat = all_rmat[sample_idx]
-    # all_tvec = all_tvec[sample_idx].copy()
-    # all_smpl = all_smpl[sample_idx].copy()
-    #
-    # # normalize
-    # all_tvec = all_tvec / 100
-    # all_smpl[:, :, :3, 3] /= 100
-    #
-    # return all_video, all_rmat, all_tvec, all_smpl, all_processed_intrinsic
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str)
+    parser.add_argument("--annotation_path", type=str)
     args = parser.parse_args()
 
     algo = "aligned_crop"
@@ -129,8 +105,11 @@ if __name__ == "__main__":
 
     save_scale = crop_size / save_size
 
-    VIDEO_DIR = "/data/unagi0/noguchi/dataset/aist++"
-    ANNOTATION_DIR = "/data/unagi0/noguchi/dataset/aist++/aist_plusplus_final"
+    # VIDEO_DIR = "/data/unagi0/noguchi/dataset/aist++"
+    # ANNOTATION_DIR = "/data/unagi0/noguchi/dataset/aist++/aist_plusplus_final"
+    VIDEO_DIR = args.data_path
+    ANNOTATION_DIR = args.annotation_path
+
     SMPL_MODEL_PATH = "../smpl_data"
     smpl = SMPL(model_path=SMPL_MODEL_PATH, gender='MALE', batch_size=1)
     aist_dataset = AISTDataset(ANNOTATION_DIR)
