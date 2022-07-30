@@ -77,17 +77,16 @@ cd ENARF-GAN
 
 ### SURREAL Dataset
 - Download the [SURREAL dataset](https://github.com/gulvarol/surreal) as
-  ```angular2html
-  <path_to_surreal>/SURREAL/data/cmu
+  ```
+  <path_to_surreal>
       ├── test
       ├── train
       └── val
   ```
 - Run
-  ```angular2html
-  cd data_preprocess/surreal
-  python prerpocess.py
-  python preprocess_depth.py
+  ```
+  cd data_preprocess
+  python surreal/prepare_sample_data.py --data_path <path_to_surreal>
   ```
 ## Demo
 ### Dynamic Scene Overfitting (DSO)
