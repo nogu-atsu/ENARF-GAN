@@ -1,3 +1,4 @@
+import argparse
 import glob
 import os
 import pickle
@@ -18,7 +19,6 @@ IMG_SIZE = 128
 CROP_SIZE = 180
 SMPL_MODEL = {"male": SMPL(model_path="../../smpl_data", gender="male"),
               "female": SMPL(model_path="../../smpl_data", gender="female")}
-DATA_ROOT = "/data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/"
 
 
 def read_frame(video_path, return_mask=False):
@@ -113,6 +113,12 @@ def preprocess(path):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", type=str)
+    args = parser.parse_args()
+
+    # DATA_ROOT = "/data/unagi0/noguchi/dataset/SURREAL/SURREAL/data/cmu/"
+    DATA_ROOT = args.data_path
     SEGMENTATION = True
 
     video_path = glob.glob(f"{DATA_ROOT}/*/*/*/*.mp4")

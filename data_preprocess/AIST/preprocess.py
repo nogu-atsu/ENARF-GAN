@@ -1,4 +1,4 @@
-# this code is based on the code of another ongoing project
+import argparse
 import glob
 import math
 import os
@@ -66,8 +66,6 @@ def preprocess_imgs(img, intrinsic, rot, trans, pose):
     else:
         raise ValueError()
 
-
-# preprocess_imgs(img, intrinsic, rot, trans, pose)
 
 def read_frames(person_id):
     all_video_path = sorted(glob.glob(f"{VIDEO_DIR}/*_d{person_id:0>2}_*.mp4"))
@@ -143,14 +141,12 @@ def read_frames(person_id):
     all_rmat = all_rmat[all_validity]
     all_tvec = all_tvec[all_validity]
     all_smpl = all_smpl[all_validity]
-    #     all_validity = all_validity[all_validity]
 
     print("num frames", len(all_video))
     sample_idx = np.linspace(0, len(all_video) - 1, N_PER_PERSON, dtype="int")
 
     all_video = all_video[sample_idx]
     all_processed_intrinsic = all_processed_intrinsic[sample_idx]
-    # all_validity = all_validity[sample_idx]
     all_rmat = all_rmat[sample_idx]
     all_tvec = all_tvec[sample_idx].copy()
     all_smpl = all_smpl[sample_idx].copy()
@@ -172,7 +168,6 @@ def create_dict(video, all_rot, all_trans, smpl, all_intrinsic):
     data_dict["camera_translation"] = all_trans
 
     data_dict["smpl_pose"] = smpl
-    #     data_dict["validity"] = validity
     return data_dict
 
 
@@ -197,12 +192,6 @@ def merge_all_cache(person_ids, mode="train"):
         with open(f'{cache_path}/{person_id:0>2}/cache.pickle', 'rb') as f:
             all_data.append(pickle.load(f))
 
-    #     validity = np.concatenate([data["validity"] for data in all_data], axis=0)
-
-    # for data in all_data:  # save_cacheではnormalizeしてなかった
-    #     data["camera_translation"] /= 100
-    #     data["smpl_pose"][:, :, :3, 3] /= 100
-
     for k in all_data[0]:
         all_data_dict[k] = np.concatenate([data[k] for data in all_data], axis=0)
 
@@ -214,20 +203,18 @@ def merge_all_cache(person_ids, mode="train"):
 
 
 def preprocess():
-    # save_cache(train_person_ids)
-    # save_cache(test_person_ids)
+    save_cache(train_person_ids)
+    save_cache(test_person_ids)
 
-    # merge_all_cache(train_person_ids, "train")
-    # merge_all_cache(test_person_ids, "test")
     merge_all_cache(np.concatenate([train_person_ids,
                                     test_person_ids]), "all")
 
 
 if __name__ == "__main__":
-    # algo = "resize"  # resize, aligned_crop
-    # crop_size =
-    # save_size =
-    # standard_focal_length = None
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", type=str)
+    parser.add_argument("--annotation_path", type=str)
+    args = parser.parse_args()
 
     algo = "aligned_crop"
     crop_size = 600
@@ -236,13 +223,13 @@ if __name__ == "__main__":
 
     save_scale = crop_size / save_size
 
-    VIDEO_DIR = "/data/unagi0/noguchi/dataset/aist++"
-    ANNOTATION_DIR = "/data/unagi0/noguchi/dataset/aist++/aist_plusplus_final"
+    # VIDEO_DIR = "/data/unagi0/noguchi/dataset/aist++"
+    # ANNOTATION_DIR = "/data/unagi0/noguchi/dataset/aist++/aist_plusplus_final"
+    VIDEO_DIR = args.data_path
+    ANNOTATION_DIR = args.annotation_path
     SMPL_MODEL_PATH = "../../smpl_data"
     smpl = SMPL(model_path=SMPL_MODEL_PATH, gender='MALE', batch_size=1)
     aist_dataset = AISTDataset(ANNOTATION_DIR)
-    # train_person_ids = [7]
-    # test_person_ids = [4, 5, 6]
     train_person_ids = np.arange(7, 31)
     test_person_ids = np.arange(1, 7)
     N_PER_PERSON = 3000
