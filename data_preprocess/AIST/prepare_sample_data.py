@@ -89,6 +89,8 @@ def save_sample_data(person_id):
     with open(f"{out_dir}/sample_data.pickle", "wb") as f:
         pickle.dump(sample_data, f)
 
+    np.save(f'{out_dir}/canonical.npy', np.load(f"{SMPL_MODEL_PATH}/male_canonical.npy"))
+
     #
     # all_video = np.concatenate(all_video, axis=0)
     # all_processed_intrinsic = np.concatenate(all_processed_intrinsic, axis=0)

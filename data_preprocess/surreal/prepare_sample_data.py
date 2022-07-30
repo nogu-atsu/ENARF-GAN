@@ -95,6 +95,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     DATA_ROOT = args.data_path
+    SMPL_MODEL_PATH = "../smpl_data"
 
     video_path = glob.glob(f"{DATA_ROOT}/val/run0/*/*.mp4")
     print(len(video_path))
@@ -110,6 +111,8 @@ if __name__ == "__main__":
         })
 
     out_dir = f"../data/surreal"
-    os.makedirs(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
     with open(f"{out_dir}/sample_data.pickle", "wb") as f:
         pickle.dump(sample_data, f)
+
+    np.save(f'{out_dir}/canonical.npy', np.load(f"{SMPL_MODEL_PATH}/neutral_canonical.npy"))

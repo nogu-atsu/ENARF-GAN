@@ -27,7 +27,7 @@ def main():
     parents = np.array([-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13,
                         14, 16, 17, 18, 19, 20, 21])
 
-    canonical_pose_path = f"smpl_data/neutral_canonical.npy"
+    canonical_pose_path = f"{config.sample_path}/canonical.npy"
     canonical_pose = np.load(canonical_pose_path)
 
     gen = TriNARFGenerator(gen_config, size, num_bone=num_bone,
