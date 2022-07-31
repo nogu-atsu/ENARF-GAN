@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from dependencies.NeRF.utils import in_cube
+from libraries.NeRF.utils import in_cube
 
 
 # TODO replace this with mesh rendering based

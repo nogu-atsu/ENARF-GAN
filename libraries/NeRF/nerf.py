@@ -2,9 +2,9 @@ from typing import Union, List, Optional, Dict
 
 import torch
 
-from dependencies.NeRF.base import NeRFBase
-from dependencies.NeRF.net import StyledMLP, MLP
-from dependencies.NeRF.utils import StyledConv1d, positional_encoding, in_cube, to_local
+from libraries.NeRF.base import NeRFBase
+from libraries.NeRF.net import StyledMLP, MLP
+from libraries.NeRF.utils import StyledConv1d, positional_encoding, in_cube, to_local
 
 
 def calc_density_and_color_from_feature(self, feature, z_rend, ray_direction):

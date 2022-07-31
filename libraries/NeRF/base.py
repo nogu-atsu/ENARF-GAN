@@ -4,8 +4,8 @@ from typing import Optional, Union, List, Dict
 import torch
 from torch import nn
 
-from dependencies.NeRF.activation import MyReLU
-from dependencies.NeRF.rendering import render, render_entire_img
+from libraries.NeRF.activation import MyReLU
+from libraries.NeRF.rendering import render, render_entire_img
 
 
 class NeRFBase(nn.Module):

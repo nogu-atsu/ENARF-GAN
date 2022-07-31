@@ -7,9 +7,9 @@ from tqdm import tqdm
 
 from NARF.models.activation import MyReLU
 from NARF.models.nerf_model import NeRF
-from dependencies.NeRF.net import StyledMLP
-from dependencies.NeRF.utils import StyledConv1d, multi_part_positional_encoding
-from dependencies.custom_stylegan2.net import EqualConv1d
+from libraries.NeRF.net import StyledMLP
+from libraries.NeRF.utils import StyledConv1d, multi_part_positional_encoding
+from libraries.custom_stylegan2.net import EqualConv1d
 
 
 class StyleNeRF(NeRF):

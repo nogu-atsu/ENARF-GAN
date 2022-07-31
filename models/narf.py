@@ -5,11 +5,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from dependencies.NARF.base import NARFBase
-from dependencies.NeRF.nerf import calc_density_and_color_from_feature
-from dependencies.NeRF.net import StyledMLP, MLP
-from dependencies.NeRF.utils import StyledConv1d, multi_part_positional_encoding, in_cube, to_local
-from dependencies.custom_stylegan2.net import EqualConv1d
+from libraries.NARF.base import NARFBase
+from libraries.NeRF.nerf import calc_density_and_color_from_feature
+from libraries.NeRF.net import StyledMLP, MLP
+from libraries.NeRF.utils import StyledConv1d, multi_part_positional_encoding, in_cube, to_local
+from libraries.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature, sample_triplane_part_prob, sample_weighted_feature_v2
 from dependencies.triplane.triplane_nerf import prepare_triplane_generator, calc_density_and_color_from_feature
 

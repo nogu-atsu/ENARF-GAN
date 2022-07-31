@@ -2,10 +2,10 @@ from typing import Optional, Union, List
 
 import torch
 
-from dependencies.NARF.mesh_rendering import render_mesh_, create_mesh
-from dependencies.NARF.pose_utils import transform_pose
-from dependencies.NeRF.base import NeRFBase
-from dependencies.NeRF.rendering import render_entire_img
+from libraries.NARF.mesh_rendering import render_mesh_, create_mesh
+from libraries.NARF.pose_utils import transform_pose
+from libraries.NeRF.base import NeRFBase
+from libraries.NeRF.rendering import render_entire_img
 
 
 class NARFBase(NeRFBase):

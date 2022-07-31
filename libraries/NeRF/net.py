@@ -3,8 +3,8 @@ from typing import Tuple
 import torch
 from torch import nn
 
-from dependencies.NeRF.utils import StyledConv1d
-from dependencies.custom_stylegan2.net import EqualConv1d
+from libraries.NeRF.utils import StyledConv1d
+from libraries.custom_stylegan2.net import EqualConv1d
 
 
 class StyledMLP(nn.Module):

@@ -3,7 +3,7 @@ from typing import Union, List
 import numpy as np
 import torch
 
-from dependencies.custom_stylegan2.net import StyledConv
+from libraries.custom_stylegan2.net import StyledConv
 
 StyledConv1d = lambda in_channel, out_channel, style_dim, groups=1: StyledConv(in_channel, out_channel, 1, style_dim,
                                                                                use_noise=False, conv_1d=True,

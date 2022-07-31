@@ -4,10 +4,10 @@ from typing import Union, List, Optional, Dict
 import torch
 from torch import nn
 
-from dependencies.NeRF.base import NeRFBase
-from dependencies.NeRF.net import StyledMLP
-from dependencies.NeRF.utils import StyledConv1d, positional_encoding, in_cube, to_local
-from dependencies.custom_stylegan2.net import EqualConv1d
+from libraries.NeRF.base import NeRFBase
+from libraries.NeRF.net import StyledMLP
+from libraries.NeRF.utils import StyledConv1d, positional_encoding, in_cube, to_local
+from libraries.custom_stylegan2.net import EqualConv1d
 from dependencies.triplane.sampling import sample_feature
 
 sys.path.append("dependencies/stylegan2_ada_pytorch")

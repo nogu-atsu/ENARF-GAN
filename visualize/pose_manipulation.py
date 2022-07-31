@@ -13,8 +13,8 @@ sys.path.append(".")
 from dataset.dataset import HumanPoseDataset
 from models.generator import TriNARFGenerator
 from dependencies.config import yaml_config
-from dependencies.NARF.pose_utils import rotate_pose_by_angle, rotate_mesh_by_angle
-from dependencies.NARF.mesh_rendering import render_mesh_
+from libraries.NARF.pose_utils import rotate_pose_by_angle, rotate_mesh_by_angle
+from libraries.NARF.mesh_rendering import render_mesh_
 
 warnings.filterwarnings('ignore')
 

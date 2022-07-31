@@ -12,8 +12,8 @@ from torch.utils.data import DataLoader
 
 from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from dependencies.config import yaml_config
-from dependencies.custom_stylegan2.net import Discriminator
-from dependencies.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
+from libraries.custom_stylegan2.net import Discriminator
+from libraries.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
 from dependencies.train_utils import record_setting, write
 from dependencies.visualization_utils import save_img
 from models.loss import nerf_patch_loss, loss_dist_func
