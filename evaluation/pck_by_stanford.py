@@ -2,19 +2,18 @@ import argparse
 import os
 import sys
 
-import cv2
 import numpy as np
 import torch
 from mmdet.apis import init_detector, inference_detector
 from mmpose.apis import (init_pose_model, process_mmdet_results,
-                         inference_top_down_pose_model, vis_pose_result)
+                         inference_top_down_pose_model)
 from mmpose.core.evaluation.top_down_eval import (keypoint_pck_accuracy)
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import tqdm
 
 sys.path.append(".")
 from evaluation.compute_PCK_fixed import GenIterator
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 from dataset.dataset import HumanDataset
 from models.generator import NARFNRGenerator, TriNARFGenerator
 

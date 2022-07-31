@@ -10,7 +10,7 @@ from libraries.NARF.mesh_rendering import create_mesh
 from libraries.NeRF.ray_sampler import mask_based_sampler, whole_image_grid_ray_sampler
 from libraries.custom_stylegan2.net import Generator as StyleGANGenerator
 from libraries.custom_stylegan2.net import StyledConv, ModulatedConv2d, PretrainedStyleGAN
-from dependencies.stylenarf.net import StyleNeRF, NeRF
+from libraries.stylenarf.net import StyleNeRF, NeRF
 from models.narf import TriPlaneNARF, MLPNARF
 
 

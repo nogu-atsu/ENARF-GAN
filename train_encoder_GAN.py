@@ -11,9 +11,9 @@ from tqdm import tqdm
 
 from dataset import THUmanDataset
 from libraries.NARF.pose_utils import rotate_pose_randomly
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 from libraries.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
-from dependencies.train_utils import record_setting, write
+from libraries.train_utils import record_setting, write
 from models.misc import Encoder, PoseDiscriminator
 
 

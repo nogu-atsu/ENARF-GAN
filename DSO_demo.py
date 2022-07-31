@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 from models.generator import SSONARFGenerator
 
 warnings.filterwarnings('ignore')

@@ -11,7 +11,7 @@ from smplx.body_models import SMPL
 from tqdm import tqdm
 
 sys.path.append("../")
-from dependencies.smpl_utils import get_pose
+from libraries.smpl_utils import get_pose
 from data_preprocess.utils import get_bone_length, SMPL_PARENTS
 
 IMG_SIZE = 128

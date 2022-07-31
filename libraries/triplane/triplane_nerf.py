@@ -8,7 +8,7 @@ from libraries.NeRF.base import NeRFBase
 from libraries.NeRF.net import StyledMLP
 from libraries.NeRF.utils import StyledConv1d, positional_encoding, in_cube, to_local
 from libraries.custom_stylegan2.net import EqualConv1d
-from dependencies.triplane.sampling import sample_feature
+from libraries.triplane.sampling import sample_feature
 
 sys.path.append("dependencies/stylegan2_ada_pytorch")
 import dnnlib

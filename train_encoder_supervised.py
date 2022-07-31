@@ -11,9 +11,9 @@ from tqdm import tqdm
 
 from dataset import THUmanDataset
 from models.misc import Encoder
-from dependencies.config import yaml_config
-from dependencies.evaluation_utils import pampjpe
-from dependencies.train_utils import record_setting, write
+from libraries.config import yaml_config
+from libraries.evaluation_utils import pampjpe
+from libraries.train_utils import record_setting, write
 
 
 def train(train_func, config):

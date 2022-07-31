@@ -14,7 +14,7 @@ from easydict import EasyDict as edict
 sys.path.append(".")
 from dataset.dataset import SurrealPoseDepthDataset
 from models.generator import NARFNRGenerator, TriNARFGenerator
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 
 warnings.filterwarnings('ignore')
 

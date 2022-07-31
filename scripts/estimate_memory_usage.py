@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 
 render_size = 128
 batchsize = 1

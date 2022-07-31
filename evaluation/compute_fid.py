@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 sys.path.append(".")
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 from dataset.dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
 from models.generator import NARFNRGenerator, TriNARFGenerator
 

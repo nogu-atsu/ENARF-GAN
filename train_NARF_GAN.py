@@ -11,11 +11,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from dataset import THUmanDataset, THUmanPoseDataset, HumanDataset, HumanPoseDataset
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 from libraries.custom_stylegan2.net import Discriminator
 from libraries.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
-from dependencies.train_utils import record_setting, write
-from dependencies.visualization_utils import save_img
+from libraries.train_utils import record_setting, write
+from libraries.visualization_utils import save_img
 from models.loss import nerf_patch_loss, loss_dist_func
 from models.generator import NARFNRGenerator, TriNARFGenerator
 

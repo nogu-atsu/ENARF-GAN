@@ -8,7 +8,7 @@ from smplx.body_models import SMPL
 from tqdm import tqdm
 
 sys.path.append("../../")
-from dependencies.smpl_utils import get_pose
+from libraries.smpl_utils import get_pose
 
 smpl_data_path = "/data/unagi0/noguchi/dataset/mosh/neutrMosh/neutrSMPL_CMU/**/*.pkl"
 smpl_data_path = glob.glob(smpl_data_path, recursive=True)

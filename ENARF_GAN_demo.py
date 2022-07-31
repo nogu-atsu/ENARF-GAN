@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 from models.generator import TriNARFGenerator
 
 warnings.filterwarnings('ignore')

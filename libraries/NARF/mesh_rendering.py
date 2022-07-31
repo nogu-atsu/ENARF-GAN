@@ -11,7 +11,7 @@ from pytorch3d.renderer import (
 from pytorch3d.structures import Meshes
 from tqdm import tqdm
 
-from dependencies.pytorch3d_utils import compute_projection_matrix_from_intrinsics
+from libraries.pytorch3d_utils import compute_projection_matrix_from_intrinsics
 
 
 def render_mesh_(meshes, intrinsics, img_size, render_size=512):

@@ -11,13 +11,13 @@ from tqdm import tqdm
 
 from dataset import THUmanDataset, HumanDataset
 from libraries.NARF.pose_utils import rotate_pose_randomly
-from dependencies.config import yaml_config
+from libraries.config import yaml_config
 from libraries.custom_stylegan2.net import Discriminator
-from dependencies.evaluation_utils import pampjpe
+from libraries.evaluation_utils import pampjpe
 from libraries.gan.loss import adv_loss_dis, adv_loss_gen, d_r1_loss
-from dependencies.mask_utils import create_bone_mask
-from dependencies.train_utils import record_setting, write
-from dependencies.visualization_utils import save_img
+from libraries.mask_utils import create_bone_mask
+from libraries.train_utils import record_setting, write
+from libraries.visualization_utils import save_img
 from models.generator import NARFNRGenerator
 from models.loss import nerf_patch_loss
 from models.misc import Encoder, PoseDiscriminator

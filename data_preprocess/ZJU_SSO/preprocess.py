@@ -11,7 +11,7 @@ from smplx.body_models import SMPL
 from tqdm import tqdm
 
 sys.path.append("../")
-from dependencies.smpl_utils import get_pose
+from libraries.smpl_utils import get_pose
 
 
 def read_annots(person_id):

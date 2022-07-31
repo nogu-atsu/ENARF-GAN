@@ -15,10 +15,10 @@ from tqdm import tqdm
 
 from NARF.models.loss import SparseLoss
 from dataset.dataset import SSODataset
-from dependencies.config import yaml_config
-from dependencies.train_utils import all_reduce
-from dependencies.train_utils import write
-from dependencies.visualization_utils import ssim, psnr, lpips, neural_actor_lpips
+from libraries.config import yaml_config
+from libraries.train_utils import all_reduce
+from libraries.train_utils import write
+from libraries.visualization_utils import ssim, psnr, lpips, neural_actor_lpips
 from models.loss import loss_dist_func
 from models.generator import SSONARFGenerator
 

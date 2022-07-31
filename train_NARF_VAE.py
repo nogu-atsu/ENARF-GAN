@@ -12,9 +12,9 @@ import torchvision.models as models
 from torch.utils.data import DataLoader
 
 from dataset import THUmanDataset, HumanDataset
-from dependencies.config import yaml_config
-from dependencies.train_utils import record_setting, write
-from dependencies.visualization_utils import save_img
+from libraries.config import yaml_config
+from libraries.train_utils import record_setting, write
+from libraries.visualization_utils import save_img
 from models.generator import NARFNRGenerator, TriNARFGenerator
 
 warnings.filterwarnings('ignore')

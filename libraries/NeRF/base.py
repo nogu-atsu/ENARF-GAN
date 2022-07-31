@@ -145,7 +145,7 @@ class NeRFBase(nn.Module):
         assert bone_length is None or bone_length.shape[0] == 1
         ray_batchsize = self.config.render_bs
 
-        from dependencies.memory_reporter import get_gpu_properties
+        from libraries.memory_reporter import get_gpu_properties
 
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
