@@ -10,7 +10,6 @@ from libraries.custom_stylegan2.net import EqualConv1d
 class StyledMLP(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, style_dim=512, num_layers=3):
         super(StyledMLP, self).__init__()
-        # TODO use StyledConv
         layers = [StyledConv1d(in_dim, hidden_dim, style_dim)]
 
         for i in range(num_layers - 2):

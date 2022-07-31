@@ -21,10 +21,6 @@ class NeRFBase(nn.Module):
         self.coordinate_scale = config.coordinate_scale
 
         assert self.origin_location in ["center", "center_fixed", "center+head"]
-        # TODO integrate mip_nerf based rendering
-        # self.mip_nerf_resolution = config.mip_nerf_resolution
-        # self.mip_nerf = config.mip_nerf
-        # assert (self.mip_nerf_resolution is not None) == self.config.mip_nerf
 
         self.density_activation = MyReLU.apply
 
