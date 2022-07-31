@@ -1,3 +1,4 @@
+import argparse
 import os
 import pickle
 import sys
@@ -9,7 +10,7 @@ import torch
 from smplx.body_models import SMPL
 from tqdm import tqdm
 
-sys.path.append("../../")
+sys.path.append("../")
 from dependencies.smpl_utils import get_pose
 
 
@@ -103,7 +104,7 @@ def preprocess(config):
     training_view = config["training_view"]
     testing_view = [i for i in range(n_camera) if i not in training_view]
 
-    # save_cache(person_id, n_train_frame, training_view, image_paths, K, R, T, D, smpl, prefix="train")
+    save_cache(person_id, n_train_frame, training_view, image_paths, K, R, T, D, smpl, prefix="train")
     save_cache(person_id, n_train_frame, testing_view, image_paths, K, R, T, D, smpl, prefix="test_novel_view",
                interval=30)
     save_cache(person_id, n_test_frame, testing_view, image_paths, K, R, T, D, smpl, prefix="test_novel_pose",
@@ -111,16 +112,19 @@ def preprocess(config):
 
 
 if __name__ == "__main__":
-    SMPL_MODEL_PATH = "../../smpl_data"
-    DIR_PATH = f"/data/unagi0/noguchi/dataset/animatable_nerf_zju"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", type=str)
+    args = parser.parse_args()
+
+    # DIR_PATH = f"/data/unagi0/noguchi/dataset/animatable_nerf_zju"
+    DIR_PATH = args.data_path
+    SMPL_MODEL_PATH = "../smpl_data"
     IMAGE_SIZE = 512
 
     configs = [
-        # {"person_id": "313", "n_train_frame": 1176, "n_test_frame": 294, "training_view": [0, 6, 12, 18]},
-        # {"person_id": "315", "n_train_frame": 1748, "n_test_frame": 437, "training_view": [0, 6, 12, 18]},
-        # {"person_id": "377", "n_train_frame": 517, "n_test_frame": 100, "training_view": [0, 6, 12, 18]},
+        {"person_id": "313", "n_train_frame": 1176, "n_test_frame": 294, "training_view": [0, 6, 12, 18]},
+        {"person_id": "315", "n_train_frame": 1748, "n_test_frame": 437, "training_view": [0, 6, 12, 18]},
         {"person_id": "386", "n_train_frame": 516, "n_test_frame": 130, "training_view": [0, 6, 12, 18]},
-        # {"person_id": "315", "n_train_frame": 2058, "n_test_frame": 100, "training_view": [0, 6, 12, 18]},
     ]
     for conf in configs:
         preprocess(conf)

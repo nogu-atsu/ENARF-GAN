@@ -15,7 +15,7 @@ from aist_plusplus.loader import AISTDataset
 from smplx.body_models import SMPL
 from tqdm import tqdm
 
-sys.path.append("../../")
+sys.path.append("../")
 from dependencies.smpl_utils import get_pose
 
 
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     # ANNOTATION_DIR = "/data/unagi0/noguchi/dataset/aist++/aist_plusplus_final"
     VIDEO_DIR = args.data_path
     ANNOTATION_DIR = args.annotation_path
-    SMPL_MODEL_PATH = "../../smpl_data"
+    SMPL_MODEL_PATH = "../smpl_data"
     smpl = SMPL(model_path=SMPL_MODEL_PATH, gender='MALE', batch_size=1)
     aist_dataset = AISTDataset(ANNOTATION_DIR)
     train_person_ids = np.arange(7, 31)

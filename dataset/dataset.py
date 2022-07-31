@@ -16,7 +16,7 @@ from tqdm import tqdm
 from dataset.utils_3d import CameraProjection, create_mask, pose_to_image_coord
 
 
-class THUmanPrior:
+class SMPLProperty:
     def __init__(self):
         self.is_blank = np.array([0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1])
 
@@ -55,7 +55,7 @@ class HumanDatasetBase(Dataset):
 
         if self.return_bone_params:
             self.cp = CameraProjection(size=size)
-            self.hpp = THUmanPrior()
+            self.hpp = SMPLProperty()
             self.num_bone = 24
             self.num_bone_param = self.num_bone - 1
             self.num_valid_keypoints = self.hpp.num_valid_keypoints
@@ -388,7 +388,7 @@ class THUmanPoseDataset(Dataset):
             self.poses2), "second pose prior should be larger than first prior"
 
         self.cp = CameraProjection(size=size)  # just holds camera intrinsics
-        self.hpp = THUmanPrior()
+        self.hpp = SMPLProperty()
         self.intrinsics = self.cp.intrinsics
 
         self.num_bone = 24
@@ -785,7 +785,7 @@ class HumanPoseDataset(THUmanPoseDataset):
         self.num_repeat_in_epoch = num_repeat_in_epoch
 
         self.cp = CameraProjection(size=size)  # just holds camera intrinsics
-        self.hpp = THUmanPrior()
+        self.hpp = SMPLProperty()
 
         # todo remove this
         self.intrinsics = self.cp.intrinsics

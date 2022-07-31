@@ -12,13 +12,13 @@ import torch
 from smplx.body_models import SMPL
 from tqdm import tqdm
 
-sys.path.append("../../")
+sys.path.append("../")
 from dependencies.smpl_utils import get_pose
 
 IMG_SIZE = 128
 CROP_SIZE = 180
-SMPL_MODEL = {"male": SMPL(model_path="../../smpl_data", gender="male"),
-              "female": SMPL(model_path="../../smpl_data", gender="female")}
+SMPL_MODEL = {"male": SMPL(model_path="../smpl_data", gender="male"),
+              "female": SMPL(model_path="../smpl_data", gender="female")}
 
 
 def read_frame(video_path, return_mask=False):
@@ -144,12 +144,12 @@ if __name__ == "__main__":
              "smpl_pose": pose_cache}
 
     if SEGMENTATION:
-        cache_dir_name = "NARF_GAN_segmented_cache"
+        cache_dir_name = "VAE_cache"
     else:
-        cache_dir_name = "NARF_GAN_cache"
+        cache_dir_name = "GAN_cache"
     os.makedirs(f"{DATA_ROOT}/{cache_dir_name}", exist_ok=True)
     with open(f"{DATA_ROOT}/{cache_dir_name}/cache.pickle", "wb") as f:
         pickle.dump(cache, f)
 
     np.save(f"{DATA_ROOT}/{cache_dir_name}/canonical.npy",
-            np.load("../../smpl_data/neutral_canonical.npy"))
+            np.load("../smpl_data/neutral_canonical.npy"))

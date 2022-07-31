@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import pickle
@@ -53,7 +54,7 @@ def read_frames(n_camera, person_id, split, n_frame, interval=1):
     # frames = [rsv.read_single_video(pcam_id) for cam_id in range(n_camera)]
 
     # multi process
-    p = Pool(5)
+    p = Pool(args.n_process)
     frames = p.map(rsv.read_single_video, range(n_camera))
 
     np_frames = []
@@ -123,12 +124,19 @@ def preprocess(config):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", type=str)
+    parser.add_argument("--n_process", type=int, default=5)
+    args = parser.parse_args()
+
+    # DIR_PATH = f"/data/unagi0/noguchi/dataset/NeuralActor"
+    DIR_PATH = args.data_path
+
     DEBUG = False
-    DIR_PATH = f"/data/unagi0/noguchi/dataset/NeuralActor"
     IMAGE_SIZE = 1024
 
     configs = [
-        # {"person_id": "lan", "n_train_frame": 33605, "n_test_frame": 14235, "n_camera": 11},
+        {"person_id": "lan", "n_train_frame": 33605, "n_test_frame": 14235, "n_camera": 11},
         {"person_id": "marc", "n_train_frame": 38194, "n_test_frame": 23062, "n_camera": 12},
     ]
     for conf in configs:
