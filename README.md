@@ -55,7 +55,7 @@ narfのレンダリングで使うpose_to_cameraは実は同じものなので�
 
 ```angular2html
 root
-├── dependencies
+├── libraries
 │    ├── stylegan2
 │    ├── triplanes
 │    ├── GAN_training

@@ -9,9 +9,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-sys.path.append("dependencies/stylegan2_pytorch")
-from dependencies.stylegan2_pytorch.op import FusedLeakyReLU, fused_leaky_relu
-from dependencies.stylegan2_pytorch.model import PixelNorm, Upsample, Blur, ModulatedConv2d, Generator
+sys.path.append("libraries/stylegan2_pytorch")
+from libraries.stylegan2_pytorch.op import FusedLeakyReLU, fused_leaky_relu
+from libraries.stylegan2_pytorch.model import PixelNorm, Upsample, Blur, ModulatedConv2d, Generator
 
 
 class NoiseInjection(nn.Module):

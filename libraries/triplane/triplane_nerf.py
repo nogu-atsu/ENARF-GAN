@@ -10,7 +10,7 @@ from libraries.NeRF.utils import StyledConv1d, positional_encoding, in_cube, to_
 from libraries.custom_stylegan2.net import EqualConv1d
 from libraries.triplane.sampling import sample_feature
 
-sys.path.append("dependencies/stylegan2_ada_pytorch")
+sys.path.append("libraries/stylegan2_ada_pytorch")
 import dnnlib
 
 
