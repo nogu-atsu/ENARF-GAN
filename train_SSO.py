@@ -13,14 +13,14 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from NARF.models.loss import SparseLoss
 from dataset.dataset import SSODataset
+from libraries.NeRF.loss import PhotometricLoss
 from libraries.config import yaml_config
 from libraries.train_utils import all_reduce
 from libraries.train_utils import write
 from libraries.visualization_utils import ssim, psnr, lpips, neural_actor_lpips
-from models.loss import loss_dist_func
 from models.generator import SSONARFGenerator
+from models.loss import loss_dist_func
 
 warnings.filterwarnings('ignore')
 
@@ -190,7 +190,7 @@ def train_func(config, dataset, data_loader, rank, ddp=False, world_size=1):
                            parent_id=dataset.parents, num_bone_param=dataset.num_bone_param)
     gen.register_canonical_pose(dataset.canonical_pose)
 
-    loss_func = SparseLoss(config.loss)
+    loss_func = PhotometricLoss(config.loss)
 
     num_gpus = torch.cuda.device_count()
     n_gpu = rank % num_gpus
