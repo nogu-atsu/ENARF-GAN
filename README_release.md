@@ -2,6 +2,7 @@
 
 **Unsupervised Learning of Efficient Geometry-Aware Neural Articulated Representations**
 Atsuhiro Noguchi, Xiao Sun, Stephen Lin, Tatsuya Harada
+
 [Project page](https://nogu-atsu.github.io/ENARF-GAN/) / [Paper](https://nogu-atsu.github.io/ENARF-GAN/)
 
 ## Requirements
@@ -13,6 +14,7 @@ We have only tested the code on NVIDIA A100 and A6000 GPUs.
 ```angular2html
 git clone --recursive git@github.com:nogu-atsu/ENARF-GAN.git
 cd ENARF-GAN
+pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 -f https://download.pytorch.org/whl/torch_stable.html
 pip install -r requirements.txt
 ```
 
