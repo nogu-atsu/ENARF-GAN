@@ -1,0 +1,38 @@
+out_root: data
+out: GAN/AIST/example
+
+dataset:
+  name: human_v2
+  bs: 12  # batchsize
+  image_size: 128
+  train:
+    data_root: data/aist++/cache128_aligned_crop_fl1500/all_all  # <- need change
+
+generator_params:
+  z_dim: 256
+  use_triplane: True
+  crop_background: True
+  nerf_params:
+    hidden_size: 256  # hidden size of NeRF
+    Nc: 48  # number of points for coarse sampling
+    Nf: 64  # number of points for fine sampling
+    # concat model
+    origin_location: center_fixed  # origin of local coordinate, root or center
+    coordinate_scale: 3
+
+discriminator_params:
+  minibatch_std: False
+
+loss:
+  adv_loss_type: ce
+  bone_guided_coef: 10
+  r1_loss_coef: 10
+  tri_plane_reg_coef: 0.001
+
+replace: True
+n_accum_step: 2
+
+num_iter: 800000
+
+# snapshots
+#resume:

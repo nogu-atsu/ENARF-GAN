@@ -103,8 +103,8 @@ def save_cache(person_id, n_camera, n_frame, prefix="train", start_frame_idx=0, 
              "smpl_pose": smpl_pose,
              "frame_id": frame_id}
 
-    os.makedirs(f"{DIR_PATH}/{person_id}/{prefix}{'_debug' * DEBUG}_cache_{n_frame}", exist_ok=True)
-    with open(f"{DIR_PATH}/{person_id}/{prefix}{'_debug' * DEBUG}_cache_{n_frame}/cache.pickle", "wb") as f:
+    os.makedirs(f"{WRITE_PATH}/{person_id}/{prefix}{'_debug' * DEBUG}_cache_{n_frame}", exist_ok=True)
+    with open(f"{WRITE_PATH}/{person_id}/{prefix}{'_debug' * DEBUG}_cache_{n_frame}/cache.pickle", "wb") as f:
         pickle.dump(cache, f)
 
 
@@ -126,10 +126,12 @@ def preprocess(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str)
+    parser.add_argument("--write_path", type=str, default="data/NeuralActor")
     parser.add_argument("--n_process", type=int, default=5)
     args = parser.parse_args()
 
     DIR_PATH = args.data_path
+    WRITE_PATH = args.write_path
 
     DEBUG = False
     IMAGE_SIZE = 1024

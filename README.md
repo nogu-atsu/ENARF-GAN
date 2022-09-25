@@ -1,11 +1,9 @@
 # Official implementation of ENARF-GAN
 
-**Unsupervised Learning of Efficient Geometry-Aware Neural Articulated Representations**
+**Unsupervised Learning of Efficient Geometry-Aware Neural Articulated Representations** \
 Atsuhiro Noguchi, Xiao Sun, Stephen Lin, Tatsuya Harada
 
 [Project page](https://nogu-atsu.github.io/ENARF-GAN/) / [Paper](https://nogu-atsu.github.io/ENARF-GAN/)
-
-Inference code and dataset preprocessing code are available
 
 ## Installation
 
@@ -196,7 +194,7 @@ Please run sample data generation before running the demo.
 
 - Example command for running the DSO model
   ```
-  python DSO_demo.py --config configs/DSO/NeuralActor/lan_denarf.yml 
+  python DSO_demo.py --config configs/DSO_demo/NeuralActor/lan_denarf.yml 
   ```
 - Synthesized images are saved in `data/result/DSO/NeuralActor/lan_denarf/samples`
 
@@ -204,7 +202,33 @@ Please run sample data generation before running the demo.
 
 - Example command for running the GAN model
   ```
-  python ENARF_GAN_demo.py --config configs/enarfgan/AIST/enarfgan.yml
+  python ENARF_GAN_demo.py --config configs/enarfgan_demo/AIST/enarfgan.yml
   ```
 - Synthesized images are saved in `data/result/GAN/AIST/enarfgan/samples`
 - If you get Out of Memory error, please try multiple times or reduce `ray_batchsize` in `libraries/NARF/mesh_rendering.py`
+
+## Training
+We tested training on a single A100 GPU.
+
+- Example command for training the DSO model
+  ```
+  python train_DSO.py --config configs/DSO_train/ZJU/313_denarf.yml --default_config configs/SSO/default.yml
+  ```
+- Example command for training the GAN model
+  ```
+  python train_ENARF_GAN.py --config configs/enarfgan_train/AIST/relu.yml --default_config configs/NARF_GAN/default.yml
+  ```
+- If there is not enough memory, try reducing bs (batchsize) or increasing n_accum_step in config.
+## Evaluation
+### DSO
+```
+python train_DSO.py --validation --config configs/DSO_train/NeuralActor/lan_denarf.yml --num_workers 2 --resume_latest
+```
+### GAN (only for SURREAL)
+
+Please install [mmpose](https://github.com/open-mmlab/mmpose) before running `compute_fid.py` 
+```
+python evaluation/compute_depth.py --config configs/enarfgan_train/SURREAL/config.yml --num_workers 2 --iteration -1 --truncation 0.4
+python evaluation/compute_PCK.py --config configs/enarfgan_train/SURREAL/config.yml --num_workers 2 --iteration -1 --truncation 0.4
+python evaluation/compute_fid.py --config configs/enarfgan_train/SURREAL/config.yml --num_workers 2 --iteration -1
+```

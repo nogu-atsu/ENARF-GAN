@@ -1,0 +1,16 @@
+out_root: data
+out: DSO/NeuralActor/lan_denarf
+
+sample_path: data/NeuralActor/lan
+
+dataset:
+  bs: 12  # batchsize
+  image_size: 1024
+  bg_color: 1
+
+generator_params:
+  use_triplane: True
+  nerf_params:
+    deformation_field: True
+    pose_conditional: True
+    render_bs: 8192

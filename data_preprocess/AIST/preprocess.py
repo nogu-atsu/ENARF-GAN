@@ -185,7 +185,7 @@ def save_cache(person_ids: np.ndarray) -> None:
 
 
 def merge_all_cache(person_ids, mode="train"):
-    cache_path = f'{VIDEO_DIR}/cache{save_size}_{algo}_fl{standard_focal_length}'
+    cache_path = f'{WRITE_PATH}/cache{save_size}_{algo}_fl{standard_focal_length}'
     all_data = []
     all_data_dict = {}
     for person_id in person_ids:
@@ -213,6 +213,7 @@ def preprocess():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str)
+    parser.add_argument("--write_path", type=str, default="data/aist++")
     parser.add_argument("--annotation_path", type=str)
     args = parser.parse_args()
 
@@ -224,6 +225,7 @@ if __name__ == "__main__":
     save_scale = crop_size / save_size
 
     VIDEO_DIR = args.data_path
+    WRITE_PATH = args.write_path
     ANNOTATION_DIR = args.annotation_path
     SMPL_MODEL_PATH = "../smpl_data"
     smpl = SMPL(model_path=SMPL_MODEL_PATH, gender='MALE', batch_size=1)

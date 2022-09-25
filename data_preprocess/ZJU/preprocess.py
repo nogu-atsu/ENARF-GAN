@@ -85,8 +85,8 @@ def save_cache(person_id, n_frame, views, image_paths, K, R, T, D, smpl, prefix=
              "smpl_pose": np.array(cache_smple_pose),
              "frame_id": np.array(cache_frame_id),
              }
-    os.makedirs(f"{DIR_PATH}/CoreView_{person_id}/{prefix}_cache_{n_frame}", exist_ok=True)
-    with open(f"{DIR_PATH}/CoreView_{person_id}/{prefix}_cache_{n_frame}/cache.pickle", "wb") as f:
+    os.makedirs(f"{WRITE_PATH}/CoreView_{person_id}/{prefix}_cache_{n_frame}", exist_ok=True)
+    with open(f"{WRITE_PATH}/CoreView_{person_id}/{prefix}_cache_{n_frame}/cache.pickle", "wb") as f:
         pickle.dump(cache, f)
 
 
@@ -111,9 +111,11 @@ def preprocess(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str)
+    parser.add_argument("--write_path", type=str, default="data/ZJU_DSO")
     args = parser.parse_args()
 
     DIR_PATH = args.data_path
+    WRITE_PATH = args.write_path
     SMPL_MODEL_PATH = "../smpl_data"
     IMAGE_SIZE = 512
 

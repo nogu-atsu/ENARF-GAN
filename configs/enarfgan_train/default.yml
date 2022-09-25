@@ -1,0 +1,58 @@
+# paths
+out_root: path_to_your_output_root  # <- need change
+out: output_directory  # <- need change
+
+dataset:
+  data_root:
+  name: hand2
+  bs: 6  # batchsize
+  image_size: 128
+  train:
+    data_root: path_to_your_dataset_root  # <- need change
+    pose_prior_root:  # <- need change
+
+
+generator_params:
+  z_dim: 256
+  patch_size: 24
+  background_ratio: 0.7
+  use_triplane: False
+  crop_background: False
+  pretrained_background: False
+  nerf_params:
+    final_activation: tanh
+    hidden_size: 32  # hidden size of NeRF
+    out_dim: 256  # output channel of NeRF
+    Nc: 48  # number of points for coarse sampling
+    Nf: 48  # number of points for fine sampling
+    no_ray_direction: False
+    # concat model
+    mask_input: False
+    origin_location: root  # origin of local coordinate, root or center
+    coordinate_scale: 1
+    # tri-plane model
+    multiply_density_with_triplane_wieght: False
+    clamp_mask: False
+    constant_triplane: False
+    constant_trimask: False  # only tri-plane mask is constant
+    constant_trimask_lr_mul: 1  # learning rate scale of tri-plane mask
+    deformation_field: False
+    selector_mlp: False
+    no_selector: False
+
+discriminator_params:
+  minibatch_std: True
+
+loss:
+  adv_loss_type: ce
+  bone_guided_coef: 10
+  r1_loss_coef: 0.01
+  tri_plane_reg_coef: 0
+
+replace: True
+num_iter: 1000000
+n_accum_step: 1
+
+# snapshots
+resume: # path to snapshot
+

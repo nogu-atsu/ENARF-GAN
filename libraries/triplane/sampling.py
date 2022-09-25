@@ -108,7 +108,8 @@ def sample_weighted_feature_v2(feat_dim: int, tri_plane_features: torch.Tensor, 
                                        index=valid_args[None].expand(3, -1))[None]  # (1, 3, num_valid)
         # challenge: this is very heavy
         value = sample_feature(feature_padded, valid_positions, clamp_mask=clamp_mask,
-                               batch_idx=valid_args // (n_bone * n))  # (1, 32, num_valid)
+                               batch_idx=torch.div(valid_args, (n_bone * n),
+                                                   rounding_mode='trunc'))  # (1, 32, num_valid)
         # gather weight
         weight = torch.gather(weight.reshape(-1), dim=0, index=valid_args)
 
@@ -117,7 +118,7 @@ def sample_weighted_feature_v2(feat_dim: int, tri_plane_features: torch.Tensor, 
 
         # memory efficient
         output = torch.zeros(feat_dim, batchsize * n, device=position.device, dtype=torch.float32)
-        scatter_idx = valid_args // (n_bone * n) * n + valid_args % n
+        scatter_idx = torch.div(valid_args, (n_bone * n), rounding_mode='trunc') * n + valid_args % n
         output.scatter_add_(dim=1, index=scatter_idx[None].expand(32, -1), src=value.squeeze(0))
         output = output.reshape(feat_dim, batchsize, n).permute(1, 0, 2)
         output = output.contiguous()

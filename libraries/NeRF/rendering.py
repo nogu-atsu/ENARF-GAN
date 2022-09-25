@@ -7,7 +7,6 @@ from torch import nn
 from libraries.NeRF.utils import in_cube
 
 
-# TODO replace this with mesh rendering based
 def decide_frustrum_range(image_coord, pose_to_camera, inv_intrinsics,
                           near_plane, far_plane, return_camera_coord=False):
     assert image_coord.shape[1] == 1
@@ -315,7 +314,6 @@ def render(model: nn.Module, image_coord: torch.tensor, pose_to_camera: torch.te
         #     # density = inf if density exceeds thres
         #     sum_fine_density = (sum_fine_density > thres) * 100000
 
-        # TODO: model rendering function
         delta = fine_depth[:, :, :, 1:] - fine_depth[:, :, :, :-1]  # B x 1 x n x Np-1
         sum_density_delta: torch.Tensor = sum_fine_density * delta * render_scale  # B x 1 x n x Np-1
 
@@ -381,10 +379,6 @@ def render_entire_img(model: nn.Module, pose_to_camera: torch.Tensor, inv_intrin
     :param bbox:
     :return:
     """
-    # TODO: implement this outside of this function
-    # assert z is None or z.shape[0] == 1
-    # assert bone_length is None or bone_length.shape[0] == 1
-
     ray_batchsize = model.config.render_bs
     if bbox is not None:
         render_width, render_height = bbox[2] - bbox[0], bbox[3] - bbox[1]

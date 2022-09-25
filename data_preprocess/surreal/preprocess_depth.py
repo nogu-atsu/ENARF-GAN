@@ -1,3 +1,4 @@
+import argparse
 import glob
 import os
 import pickle
@@ -8,7 +9,7 @@ import numpy as np
 import scipy.io
 from tqdm import tqdm
 
-from preprocess import IMG_SIZE, DATA_ROOT, read_pose_and_crop
+from preprocess import IMG_SIZE, read_pose_and_crop
 
 
 def read_frame(video_path):
@@ -32,6 +33,11 @@ def preprocess(path):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_path", type=str)
+    args = parser.parse_args()
+
+    DATA_ROOT = args.data_path
     video_path = glob.glob(f"{DATA_ROOT}/*/*/*/*.mp4")
     print(len(video_path))
 

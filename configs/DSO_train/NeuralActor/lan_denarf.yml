@@ -1,0 +1,52 @@
+out_root: data
+out: DSO/NeuralActor/lan_denarf
+
+dataset:
+  name: human_v2
+  bs: 12  # batchsize
+  image_size: 1024
+  bg_color: 1
+  train:
+    data_root: data/NeuralActor/lan/train_cache_33605  # <- need change
+    n_frames: 33605
+    n_camera: 11
+  val:
+    novel_pose:
+      data_root: data/NeuralActor/lan/test_debug_cache_14235  # <- need change
+      n_frames: 14235
+      n_camera: 11
+
+
+generator_params:
+  use_triplane: True
+  ray_batchsize: 4096
+  nerf_params:
+    hidden_size: 256  # hidden size of NeRF
+    Nc: 48  # number of points for coarse sampling
+    Nf: 64  # number of points for fine sampling
+    density_activation: MyReLU
+    no_ray_direction: True
+    # concat model
+    origin_location: center_fixed  # origin of local coordinate, root or center
+    coordinate_scale: 3
+    deformation_field: True
+    time_conditional: True
+    pose_conditional: True
+    render_bs: 8192
+
+loss:
+  color_coef: 1
+  mask_coef: 1
+  nerf_loss_type: mae
+
+# hyper parameters
+num_iter: 150000
+lr: 0.001
+scheduler_gamma: 0.99995
+val_interval: 500 # validation interval
+print_interval: 10
+tensorboard_interval: 100
+save_interval: 500
+
+# snapshots
+#resume:

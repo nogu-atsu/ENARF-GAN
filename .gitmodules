@@ -7,3 +7,6 @@
 [submodule "stylegan2_pytorch"]
 	path = libraries/stylegan2_pytorch
 	url = git@github.com:rosinality/stylegan2-pytorch.git
+[submodule "libraries/mmpose"]
+	path = libraries/mmpose
+	url = git@github.com:open-mmlab/mmpose.git

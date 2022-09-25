@@ -1,0 +1,14 @@
+out_root: data
+out: DSO/NeuralActor/marc_enarf
+
+sample_path: data/NeuralActor/marc
+
+dataset:
+  bs: 16  # batchsize
+  image_size: 1024
+  bg_color: 1
+
+generator_params:
+  use_triplane: True
+  nerf_params:
+    constant_triplane: True

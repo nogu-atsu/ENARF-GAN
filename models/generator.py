@@ -79,7 +79,9 @@ class TriNARFGenerator(nn.Module):  # tri-plane nerf
             z_for_nerf, z_for_neural_render = torch.split(z, [z_dim * 2, z_dim], dim=1)
 
         # sparse rendering
-        inv_intrinsics = torch.tensor(inv_intrinsics).float().cuda(homo_img.device)
+        if isinstance(inv_intrinsics, np.ndarray):
+            inv_intrinsics = torch.from_numpy(inv_intrinsics)
+        inv_intrinsics = inv_intrinsics.float().cuda(homo_img.device)
         nerf_output = self.nerf(batchsize, homo_img,
                                 pose_to_camera, inv_intrinsics, z_for_nerf,
                                 z_for_neural_render,
@@ -237,7 +239,6 @@ class DSONARFGenerator(nn.Module):
         # sparse rendering
         z1, z2 = self.get_latents(frame_time, pose_to_camera)
 
-        # TODO: randomly replace z1 during training
         rendered_color, rendered_mask = self.nerf(batchsize, img_coord,
                                                   pose_to_camera, inv_intrinsics, z1, z2,
                                                   bone_length,

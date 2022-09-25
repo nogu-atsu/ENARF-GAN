@@ -74,7 +74,6 @@ class TriPlaneNARF(NARFBase):
             self.density_fc = StyledConv1d(32, 1, self.z2_dim)
             self.mlp = StyledMLP(32 + 3 * self.num_frequency_for_other * 2, 64, 3, style_dim=self.z2_dim)
         else:
-            print("not view dependent")
             self.mlp = StyledMLP(32, 64, 4, style_dim=self.z2_dim)
 
     def prepare_stylegan2(self, in_channels):

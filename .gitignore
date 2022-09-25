@@ -1,3 +1,5 @@
 .idea
 NARF_old/*
 #smpl_data
+*.pth
+*.zip

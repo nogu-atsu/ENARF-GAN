@@ -115,9 +115,11 @@ def preprocess(path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str)
+    parser.add_argument("--write_path", type=str, default="data/surreal")
     args = parser.parse_args()
 
     DATA_ROOT = args.data_path
+    WRITE_PATH = args.write_path
     SEGMENTATION = True
 
     video_path = glob.glob(f"{DATA_ROOT}/*/*/*/*.mp4")
@@ -146,9 +148,9 @@ if __name__ == "__main__":
         cache_dir_name = "VAE_cache"
     else:
         cache_dir_name = "GAN_cache"
-    os.makedirs(f"{DATA_ROOT}/{cache_dir_name}", exist_ok=True)
-    with open(f"{DATA_ROOT}/{cache_dir_name}/cache.pickle", "wb") as f:
+    os.makedirs(f"{WRITE_PATH}/{cache_dir_name}", exist_ok=True)
+    with open(f"{WRITE_PATH}/{cache_dir_name}/cache.pickle", "wb") as f:
         pickle.dump(cache, f)
 
-    np.save(f"{DATA_ROOT}/{cache_dir_name}/canonical.npy",
+    np.save(f"{WRITE_PATH}/{cache_dir_name}/canonical.npy",
             np.load("../smpl_data/neutral_canonical.npy"))
