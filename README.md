@@ -216,8 +216,9 @@ We tested training on a single A100 GPU.
   ```
 - Example command for training the GAN model
   ```
-  python train_ENARF_GAN.py --config configs/enarfgan_train/AIST/relu.yml --default_config configs/NARF_GAN/default.yml
+  python train_ENARF_GAN.py --config configs/enarfgan_train/AIST/config.yml --default_config configs/NARF_GAN/default.yml
   ```
+- Results are saved in `data/result/DSO/ZJU/313_denarf` and `data/result/GAN/AIST/example`
 - If there is not enough memory, try reducing bs (batchsize) or increasing n_accum_step in config.
 ## Evaluation
 ### DSO
