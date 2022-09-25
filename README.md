@@ -232,3 +232,14 @@ python evaluation/compute_depth.py --config configs/enarfgan_train/SURREAL/confi
 python evaluation/compute_PCK.py --config configs/enarfgan_train/SURREAL/config.yml --num_workers 2 --iteration -1 --truncation 0.4
 python evaluation/compute_fid.py --config configs/enarfgan_train/SURREAL/config.yml --num_workers 2 --iteration -1
 ```
+
+## Citation
+If you find this work useful for your research, please cite:
+```
+@inproceedings{noguchi2022unsupervised,
+  author    = {Noguchi, Atsuhiro and Sun, Xiao and Lin, Stephen and Harada, Tatsuya},
+  title     = {Unsupervised Learning of Efficient Geometry-Aware Neural Articulated Representations},
+  booktitle = {European Conference on Computer Vision},
+  year      = {2022},
+}
+```
