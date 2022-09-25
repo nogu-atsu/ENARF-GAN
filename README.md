@@ -212,11 +212,11 @@ We tested training on a single A100 GPU.
 
 - Example command for training the DSO model
   ```
-  python train_DSO.py --config configs/DSO_train/ZJU/313_denarf.yml --default_config configs/SSO/default.yml
+  python train_DSO.py --config configs/DSO_train/ZJU/313_denarf.yml --default_config configs/DSO_train/default.yml
   ```
 - Example command for training the GAN model
   ```
-  python train_ENARF_GAN.py --config configs/enarfgan_train/AIST/config.yml --default_config configs/NARF_GAN/default.yml
+  python train_ENARF_GAN.py --config configs/enarfgan_train/AIST/config.yml --default_config configs/enarfgan_train/default.yml
   ```
 - Results are saved in `data/result/DSO/ZJU/313_denarf` and `data/result/GAN/AIST/example`
 - If there is not enough memory, try reducing bs (batchsize) or increasing n_accum_step in config.

@@ -240,8 +240,8 @@ def main(config, batch_size=4, num_sample=10_000):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default="configs/NARF_GAN/THUman/20210903.yml")
-    parser.add_argument('--default_config', type=str, default="configs/NARF_GAN/default.yml")
+    parser.add_argument('--config', type=str, default="configs/enarfgan_train/SURREAL/config.yml")
+    parser.add_argument('--default_config', type=str, default="configs/enarfgan_train/default.yml")
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--iteration', type=int, default=-1)
     parser.add_argument('--truncation', type=float, default=1)

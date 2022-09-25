@@ -136,7 +136,7 @@ def main(config, batch_size=4, num_sample=10_000):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--surreal_path', type=str, default='data/surreal', help='path to surreal dataset')
-    parser.add_argument('--config', type=str, default="configs/enarfgan_train/AIST/config.yml")
+    parser.add_argument('--config', type=str, default="configs/enarfgan_train/SURREAL/config.yml")
     parser.add_argument('--default_config', type=str, default="configs/enarfgan_train/default.yml")
     parser.add_argument('--num_workers', type=int, default=1)
     parser.add_argument('--iteration', type=int, default=-1)
