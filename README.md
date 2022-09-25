@@ -226,7 +226,7 @@ python train_DSO.py --validation --config configs/DSO_train/NeuralActor/lan_dena
 ```
 ### GAN (only for SURREAL)
 
-Please install [mmpose](https://github.com/open-mmlab/mmpose) before running `compute_fid.py` 
+Please install [mmpose](https://github.com/open-mmlab/mmpose) before running `compute_PCK.py` 
 ```
 python evaluation/compute_depth.py --config configs/enarfgan_train/SURREAL/config.yml --num_workers 2 --iteration -1 --truncation 0.4
 python evaluation/compute_PCK.py --config configs/enarfgan_train/SURREAL/config.yml --num_workers 2 --iteration -1 --truncation 0.4
